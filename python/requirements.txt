@@ -1,0 +1,17 @@
+async-timeout==4.0.2
+bleak==0.20.2
+bleak-winrt==1.2.0
+freetype-py==2.3.0
+hsluv==5.0.3
+kiwisolver==1.4.4
+matlabengine==9.14.2
+numpy==1.24.2
+opencv-contrib-python==4.7.0.72
+packaging==23.1
+PyOpenGL==3.1.6
+PyOpenGL-accelerate==3.1.6
+PyQt6==6.5.0
+PyQt6-Qt6==6.5.0
+PyQt6-sip==13.5.0
+pyserial==3.5
+vispy==0.12.2
