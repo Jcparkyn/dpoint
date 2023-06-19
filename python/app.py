@@ -19,8 +19,7 @@ import multiprocessing as mp
 
 from marker_tracker import run_tracker
 
-IMAGE_SHAPE = (600, 800)  # (height, width)
-CANVAS_SIZE = (1080, 1080)  # (width, height)
+CANVAS_SIZE = (1080, 1920)  # (width, height)
 NUM_LINE_POINTS = 400
 TRAIL_POINTS = 600
 
@@ -55,7 +54,7 @@ class CanvasWrapper:
         self.grid = self.canvas.central_widget.add_grid()
 
         self.view_top = self.grid.add_view(0, 0, bgcolor="grey")
-        self.view_top.camera = scene.TurntableCamera(up="z", fov=0)
+        self.view_top.camera = scene.TurntableCamera(up="z", fov=0, center=(0,0,0), elevation=90, azimuth=0, scale_factor=0.3)
         self.cube = visuals.Box(
             0.014, stylus_len, 0.014, edge_color="black", parent=self.view_top.scene
         )
