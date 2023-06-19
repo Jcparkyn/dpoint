@@ -19,19 +19,21 @@ BLETypedCharacteristic<IMUDataPacket> imuCharacteristic("19B10013-E8F2-537E-4F6C
 
 LSM6DS3 myIMU(I2C_MODE, 0x6A); //I2C device address 0x6A
 
-void setup() {
-  pinMode(ledPin, OUTPUT);
-  digitalWrite(ledPin, LOW);
+void blink_error() {
+  for (int i = 0; i < 11; i++) {
+    digitalWrite(ledPin, (i % 2 == 0) ? HIGH : LOW);
+    delay(200);
+  }
+}
 
+bool start_ble() {
+  digitalWrite(ledPin, LOW);
   if (!BLE.begin()) {
-    while (1);
+    return false;
   }
 
   if (myIMU.begin() != 0) {
-    Serial.println("Device error");
-    while (1);
-  } else {
-    Serial.println("aX,aY,aZ,gX,gY,gZ");
+    return false;
   }
 
   BLE.setLocalName("DPOINT");
@@ -46,32 +48,82 @@ void setup() {
   IMUDataPacket initialPacket = { 0 };
   imuCharacteristic.writeValue(initialPacket);
 
-  // start advertising
   BLE.advertise();
+  return true;
+}
+
+void stop_ble() {
+  BLE.end();
+  digitalWrite(ledPin, HIGH);
+}
+
+float wakeUpThreshold = 500.0f; // degrees per second
+float stayAwakeThreshold = 5.0f; // degrees per second
+unsigned long stayAwakeTime = 1000*60*2; // milliseconds
+
+void run_ble() {
+  unsigned long lastMotionTime = millis();
+  while (true) {
+    unsigned long startTime = millis();
+    if (startTime - lastMotionTime > stayAwakeTime) {
+      return;
+    }
+
+    BLE.poll();
+
+    float aX = myIMU.readFloatAccelX();
+    float aY = myIMU.readFloatAccelY();
+    float aZ = myIMU.readFloatAccelZ();
+    float gX = myIMU.readFloatGyroX();
+    float gY = myIMU.readFloatGyroY();
+    float gZ = myIMU.readFloatGyroZ();
+
+    float motionAmount = gX*gX + gY*gY + gZ*gZ;
+    if (motionAmount > stayAwakeThreshold*stayAwakeThreshold) {
+      lastMotionTime = startTime;
+    }
+    
+    IMUDataPacket packet = {
+      .accel = {aX, aY, aZ},
+      .gyro = {gX, gY, gZ},
+      .time = millis(),
+    };
+    imuCharacteristic.writeValue(packet);
+
+    unsigned long time = millis() - startTime;
+    unsigned long waitPeriod = delayMs - time;
+    if (waitPeriod > 0 && waitPeriod < 500) { // protection against overflow issues
+      delay(waitPeriod);
+    }
+  }
+}
+
+void sleep() {
+  digitalWrite(ledPin, HIGH);
+  while (true) {
+    float gX = myIMU.readFloatGyroX();
+    float gY = myIMU.readFloatGyroY();
+    float gZ = myIMU.readFloatGyroZ();
+
+    float motionAmount = gX*gX + gY*gY + gZ*gZ;
+
+    if (motionAmount > wakeUpThreshold*wakeUpThreshold) {
+      return;
+    }
+    delay(100);
+  }
+}
+
+void setup() {
+  pinMode(ledPin, OUTPUT);
 }
 
 void loop() {
-  unsigned long startTime = millis();
-
-  BLE.poll();
-
-  float aX = myIMU.readFloatAccelX();
-  float aY = myIMU.readFloatAccelY();
-  float aZ = myIMU.readFloatAccelZ();
-  float gX = myIMU.readFloatGyroX();
-  float gY = myIMU.readFloatGyroY();
-  float gZ = myIMU.readFloatGyroZ();
-  
-  IMUDataPacket packet = {
-    .accel = {aX, aY, aZ},
-    .gyro = {gX, gY, gZ},
-    .time = millis(),
-  };
-  imuCharacteristic.writeValue(packet);
-
-  unsigned long time = millis() - startTime;
-  unsigned long waitPeriod = delayMs - time;
-  if (waitPeriod > 0 && waitPeriod < 500) { // protection against overflow issues
-    delay(waitPeriod);
+  if (!start_ble()) {
+    blink_error();
+    return;
   }
+  run_ble();
+  stop_ble();
+  sleep();
 }
