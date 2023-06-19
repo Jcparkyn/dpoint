@@ -62,8 +62,8 @@ classdef ImuFusion < handle
             tip_pos = [tip_pos_opencv(1), -tip_pos_opencv(2), -tip_pos_opencv(3)];
             imu_pos = tip_pos - rotatepoint(or_quat, [0 .143 0]);
 
-            cov_pos = 0.3e-6;
-            cov_or = 0.5e-5;
+            cov_pos = 0.5e-5;
+            cov_or = 0.5e-4;
             fuse(obj.FUSE, obj.Camera, [imu_pos compact(or_quat)].', [cov_pos cov_pos cov_pos cov_or cov_or cov_or cov_or]);
         end
 

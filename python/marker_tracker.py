@@ -25,7 +25,7 @@ def getWebcam():
     webcam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
     webcam.set(cv2.CAP_PROP_FOCUS, 30)
     webcam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-    webcam.set(cv2.CAP_PROP_EXPOSURE, -7)
+    webcam.set(cv2.CAP_PROP_EXPOSURE, -8)
     webcam.set(cv2.CAP_PROP_BRIGHTNESS, 127)
     webcam.set(cv2.CAP_PROP_CONTRAST, 140)
     webcam.set(cv2.CAP_PROP_GAIN, 200)
@@ -61,15 +61,14 @@ def deg2rad(deg: float) -> float:
     return deg * np.pi / 180
 
 
-def inverseRT(rvec, tvec):
+def inverseRT(rvec, tvec) -> Tuple[np.ndarray, np.ndarray]:
     R, _ = cv2.Rodrigues(rvec)
     Rt = np.transpose(R)
     return (cv2.Rodrigues(Rt)[0], -Rt @ tvec)
 
-
 def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarray]:
-    baseRvec, baseTvec = inverseRT(rvec2, tvec2)
-    rvec, tvec, *_ = cv2.composeRT(rvec1, tvec1, baseRvec, baseTvec)
+    rvec2inv, tvec2inv = inverseRT(rvec2, tvec2)
+    rvec, tvec, *_ = cv2.composeRT(rvec1, tvec1, rvec2inv, tvec2inv)
     return (rvec, tvec)
 
 
@@ -121,7 +120,7 @@ def array_to_str(arr):
 
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
-    cv2.moveWindow("Tracker", -1080, -200)
+    cv2.moveWindow("Tracker", -1080, -150)
     cameraMatrix, distCoeffs = readCameraParameters("camera_params_c920.yml")
     print("Opening webcam..")
     webcam = getWebcam()

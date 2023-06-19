@@ -22,7 +22,7 @@ from marker_tracker import run_tracker
 IMAGE_SHAPE = (600, 800)  # (height, width)
 CANVAS_SIZE = (1080, 1080)  # (width, height)
 NUM_LINE_POINTS = 400
-TRAIL_POINTS = 1000
+TRAIL_POINTS = 600
 
 COLORMAP_CHOICES = ["viridis", "reds", "blues"]
 LINE_COLOR_CHOICES = ["black", "red", "blue"]
@@ -42,7 +42,7 @@ def get_line_color(line: np.ndarray):
     return np.hstack(
         [
             np.tile(base_col, (line.shape[0], 1)),
-            1 - np.clip(pos_z * 200, 0, 1),
+            1 - np.clip(pos_z * 300, 0, 1),
         ]
     )
 
@@ -183,7 +183,7 @@ class ImuDataSource(QtCore.QObject):
                     }
                 )
 
-            if len(imu_queue) > 3:
+            if len(imu_queue) > 4:
                 accel, gyro = imu_queue.popleft()
                 currentTime = time.time()
                 dt = currentTime - lastTime
