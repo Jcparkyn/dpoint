@@ -3,7 +3,7 @@
 
 const int ledPin = LED_BUILTIN; // set ledPin to on-board LED
 
-const unsigned long rate = 100; // samples per second
+const unsigned long rate = 120; // samples per second
 const unsigned long delayMs = 1000/rate;
 
 struct IMUDataPacket {
@@ -32,6 +32,12 @@ bool start_ble() {
     return false;
   }
 
+  myIMU.settings.accelRange = 4; // Can be: 2, 4, 8, 16
+  myIMU.settings.gyroRange = 500; // Can be: 125, 245, 500, 1000, 2000
+  myIMU.settings.accelSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666, 3332, 6664, 13330
+  myIMU.settings.gyroSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666
+
+
   if (myIMU.begin() != 0) {
     return false;
   }
@@ -58,7 +64,7 @@ void stop_ble() {
 }
 
 float wakeUpThreshold = 500.0f; // degrees per second
-float stayAwakeThreshold = 5.0f; // degrees per second
+float stayAwakeThreshold = 10.0f; // degrees per second
 unsigned long stayAwakeTime = 1000*60*2; // milliseconds
 
 void run_ble() {
@@ -86,7 +92,7 @@ void run_ble() {
     IMUDataPacket packet = {
       .accel = {aX, aY, aZ},
       .gyro = {gX, gY, gZ},
-      .time = millis(),
+      .time = startTime,
     };
     imuCharacteristic.writeValue(packet);
 
@@ -110,12 +116,13 @@ void sleep() {
     if (motionAmount > wakeUpThreshold*wakeUpThreshold) {
       return;
     }
-    delay(100);
+    delay(200);
   }
 }
 
 void setup() {
   pinMode(ledPin, OUTPUT);
+  blink_error();
 }
 
 void loop() {
@@ -125,5 +132,6 @@ void loop() {
   }
   run_ble();
   stop_ble();
+  blink_error();
   sleep();
 }
