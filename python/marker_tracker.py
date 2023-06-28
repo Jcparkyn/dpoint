@@ -12,6 +12,7 @@ def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
         raise Exception("Couldn't open file")
     cameraMatrix = fs.getNode("camera_matrix").mat()
     distCoeffs = fs.getNode("distortion_coefficients").mat()
+    fs.release()
     return (cameraMatrix, distCoeffs)
 
 
@@ -98,7 +99,7 @@ baseMarkerCornersWS = np.array(
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 arucoParams = aruco.DetectorParameters()
 arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
-arucoParams.cornerRefinementWinSize = 3
+arucoParams.cornerRefinementWinSize = 2
 # arucoParams.cornerRefinementMaxIterations = 30
 # arucoParams.cornerRefinementMinAccuracy = 0.01
 # arucoParams.errorCorrectionRate = 0.99
@@ -121,7 +122,7 @@ def array_to_str(arr):
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -150)
-    cameraMatrix, distCoeffs = readCameraParameters("camera_params_c920.yml")
+    cameraMatrix, distCoeffs = readCameraParameters("camera_params_c922_f30.yml")
     print("Opening webcam..")
     webcam = getWebcam()
 
@@ -143,6 +144,14 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             webcam.set(cv2.CAP_PROP_FOCUS, webcam.get(cv2.CAP_PROP_FOCUS) - 5)
 
         ret, frame = webcam.read()
+
+        if keypress == ord("s"):
+            focus = round(webcam.get(cv2.CAP_PROP_FOCUS))
+            filepath = f"calibration_pics/f{focus}/{round(time.time())}.jpg"
+            success = cv2.imwrite(filepath, frame)
+            # success = cv2.imwrite(f"calibration_pics/f30/1234.png", frame)
+            print(f"save: {success}, {filepath}")
+
         processingStartTime = time.perf_counter()
         cv2.flip(frame, -1, frame)
 
