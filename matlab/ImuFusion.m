@@ -82,7 +82,7 @@ classdef ImuFusion < handle
         end
 
         function check_divergence(obj)
-            if max(obj.FUSE.State, [], 'all') > 1e2 || max(obj.FUSE.StateCovariance, [], 'all') > 1e2
+            if max(obj.FUSE.State, [], 'all') > 50 || max(obj.FUSE.StateCovariance, [], 'all') > 50
                 disp("Resetting filter");
                 reset_state(obj);
             end

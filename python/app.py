@@ -4,6 +4,7 @@ from PyQt6 import QtWidgets, QtCore
 
 import vispy
 from vispy import scene
+from vispy.io import read_mesh
 from vispy.scene import SceneCanvas, visuals
 from vispy.app import use_app
 from vispy.util import quaternion
@@ -41,7 +42,7 @@ def get_line_color(line: np.ndarray):
     return np.hstack(
         [
             np.tile(base_col, (line.shape[0], 1)),
-            1 - np.clip(pos_z * 300, 0, 1),
+            1 - np.clip(pos_z * 400, 0, 1),
         ]
     )
 
@@ -54,17 +55,16 @@ class CanvasWrapper:
         self.grid = self.canvas.central_widget.add_grid()
 
         self.view_top = self.grid.add_view(0, 0, bgcolor="grey")
-        self.view_top.camera = scene.TurntableCamera(up="z", fov=0, center=(0,0,0), elevation=90, azimuth=0, scale_factor=0.3)
-        self.cube = visuals.Box(
-            0.014, stylus_len, 0.014, edge_color="black", parent=self.view_top.scene
+        self.view_top.camera = scene.TurntableCamera(
+            up="z", fov=0, center=(0, 0, 0), elevation=90, azimuth=0, scale_factor=0.3
         )
-        pen_tip = visuals.XYZAxis(parent=self.cube)
+        vertices, faces, normals, texcoords = read_mesh("pen.obj")
+        self.pen_mesh = visuals.Mesh(vertices, faces, color=(1, .5, .5, 1), parent=self.view_top.scene)
+        self.pen_mesh.transform = transforms.MatrixTransform()
+
+        pen_tip = visuals.XYZAxis(parent=self.pen_mesh)
         pen_tip.transform = transforms.MatrixTransform(
             vispy.util.transforms.scale([0.02, 0.02, 0.02])
-            @ vispy.util.transforms.translate([0, 0, stylus_len * 0.5])
-        )
-        self.cube.transform = transforms.MatrixTransform(
-            vispy.util.transforms.translate([0, 0, 0])
         )
 
         trail_data = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
@@ -82,9 +82,8 @@ class CanvasWrapper:
         or_fix = vispy.util.transforms.rotate(90, [1, 0, 0])
         pos = new_data_dict["position"]
         pos_converted = np.array([-pos[0], pos[1], -pos[2]])
-        self.cube.transform.matrix = (
-            vispy.util.transforms.translate([0, 0, stylus_len * 0.5])
-            @ orientation_quat.get_matrix()
+        self.pen_mesh.transform.matrix = (
+            orientation_quat.get_matrix()
             @ or_fix
             @ vispy.util.transforms.translate(pos_converted)
         )
@@ -92,7 +91,6 @@ class CanvasWrapper:
             append_line_point(self.trail_line.pos, pos_converted),
             color=get_line_color(self.trail_line.pos),
         )
-        # self.canvas.update()
 
 
 class MainWindow(QtWidgets.QMainWindow):
