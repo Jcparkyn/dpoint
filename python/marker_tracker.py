@@ -67,6 +67,7 @@ def inverseRT(rvec, tvec) -> Tuple[np.ndarray, np.ndarray]:
     Rt = np.transpose(R)
     return (cv2.Rodrigues(Rt)[0], -Rt @ tvec)
 
+
 def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarray]:
     rvec2inv, tvec2inv = inverseRT(rvec2, tvec2)
     rvec, tvec, *_ = cv2.composeRT(rvec1, tvec1, rvec2inv, tvec2inv)
@@ -84,18 +85,6 @@ markersOnPen = {
     7: getCornersPS(np.array([0, 0.1175, 0.011], dtype=np.float32), deg2rad(5)),
 }
 
-baseMarkerId = 40
-baseMarkerLength = 0.1
-baseMarkerCornersWS = np.array(
-    [
-        [-baseMarkerLength / 2, baseMarkerLength / 2, 0],
-        [baseMarkerLength / 2, baseMarkerLength / 2, 0],
-        [baseMarkerLength / 2, -baseMarkerLength / 2, 0],
-        [-baseMarkerLength / 2, -baseMarkerLength / 2, 0],
-    ],
-    dtype=np.float32,
-)
-
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 arucoParams = aruco.DetectorParameters()
 arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
@@ -110,13 +99,55 @@ arucoParams.adaptiveThreshWinSizeMax = 23
 # arucoParams.adaptiveThreshWinSizeStep = 1000
 arucoParams.useAruco3Detection = False
 arucoParams.minMarkerPerimeterRate = 0.02
-arucoParams.maxMarkerPerimeterRate = 1
+arucoParams.maxMarkerPerimeterRate = 0.5
 arucoParams.minSideLengthCanonicalImg = 16
 detector = aruco.ArucoDetector(arucoDic, arucoParams)
 
 
 def array_to_str(arr):
     return ",".join(map(lambda x: f"{x*100:+2.1f}", list(arr.flat)))
+
+
+charuco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
+charuco_board = aruco.CharucoBoard((10, 7), 0.028, 0.022, charuco_dic)
+charuco_params = aruco.DetectorParameters()
+charuco_detector = aruco.ArucoDetector(charuco_dic, charuco_params)
+
+
+def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
+    corners, ids, rejected = charuco_detector.detectMarkers(frame)
+    if len(corners) == 0:
+        raise Exception("No markers detected")
+    display_frame = aruco.drawDetectedMarkers(image=frame, corners=corners)
+    response, charuco_corners, charuco_ids = aruco.interpolateCornersCharuco(
+        markerCorners=corners, markerIds=ids, image=frame, board=charuco_board
+    )
+    if len(charuco_corners) < 5:
+        raise Exception("Not enough corners detected")
+    display_frame = aruco.drawDetectedCornersCharuco(
+        image=display_frame, charucoCorners=charuco_corners, charucoIds=charuco_ids
+    )
+    success, rvec, tvec = aruco.estimatePoseCharucoBoard(
+        charuco_corners,
+        charuco_ids,
+        charuco_board,
+        cameraMatrix,
+        distCoeffs,
+        None,
+        None,
+        False,
+    )
+    if not success:
+        raise Exception("Failed to estimate camera pose")
+    # The rvec from charuco is z-down for some reason.
+    # This is a hack to convert back to z-up.
+    rvec, *_ = cv2.composeRT(np.array([0, 0, -np.pi / 2]), tvec * 0, rvec, tvec)
+    rvec, *_ = cv2.composeRT(np.array([0, np.pi, 0]), tvec * 0, rvec, tvec)
+    display_frame = cv2.drawFrameAxes(
+        display_frame, cameraMatrix, distCoeffs, rvec, tvec, 0.2
+    )
+    # cv2.imshow("Charuco", display_frame)
+    return (rvec, tvec)
 
 
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
@@ -153,7 +184,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             print(f"save: {success}, {filepath}")
 
         processingStartTime = time.perf_counter()
-        cv2.flip(frame, -1, frame)
+        # cv2.flip(frame, -1, frame)
 
         ids: np.ndarray
         allCornersIS: np.ndarray
@@ -168,13 +199,11 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                     cornersPS = markersOnPen[id]
                     validMarkers.append((id, cornersPS, cornersIS))
 
-            if baseMarkerId in ids and (not calibrated or keypress == ord("c")):
+            if not calibrated or keypress == ord("c"):
                 calibrated = True
                 print("Calibrating...")
-                baseMarkerIndex = list(ids).index(baseMarkerId)
-                baseMarkerCornersIS = allCornersIS[baseMarkerIndex]
-                success, baseRvec, baseTvec = cv2.solvePnP(
-                    baseMarkerCornersWS, baseMarkerCornersIS, cameraMatrix, distCoeffs
+                baseRvec, baseTvec = estimate_camera_pose_charuco(
+                    frame, cameraMatrix, distCoeffs
                 )
 
         if len(validMarkers) >= 1:
