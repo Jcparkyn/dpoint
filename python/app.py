@@ -19,10 +19,11 @@ import queue
 import multiprocessing as mp
 
 from marker_tracker import run_tracker
+from monitor_ble import monitor_ble
 
 CANVAS_SIZE = (1080, 1920)  # (width, height)
 NUM_LINE_POINTS = 400
-TRAIL_POINTS = 600
+TRAIL_POINTS = 1000
 
 COLORMAP_CHOICES = ["viridis", "reds", "blues"]
 LINE_COLOR_CHOICES = ["black", "red", "blue"]
@@ -113,22 +114,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.closing.emit()
         return super().closeEvent(event)
 
-
-def readVals(device: serial.Serial):
-    while device.in_waiting > 6 * 7:
-        device.readline()
-    line = device.readline().decode().rstrip()
-    vals = np.array(line.split(","), dtype=np.float32)
-    if vals.size != 6:
-        vals = np.zeros(6, dtype=np.float32)
-    accel = vals[0:3] * 9.8
-    gyro = vals[3:6] * np.pi / 180.0
-    # accel = [-accel[2], -accel[1], accel[3]];
-    # gyro = [gyro[2], gyro[1], -gyro[3]];
-    return accel, gyro
-
-
-class ImuDataSource(QtCore.QObject):
+class SensorDataSource(QtCore.QObject):
     new_data = QtCore.pyqtSignal(dict)
     finished = QtCore.pyqtSignal()
 
@@ -137,30 +123,27 @@ class ImuDataSource(QtCore.QObject):
         eng: matlab.engine.MatlabEngine,
         imuf,
         tracker_queue: mp.Queue,
-        num_iterations=50000,
+        imu_queue: mp.Queue,
         parent=None,
     ):
         super().__init__(parent)
         self._should_end = False
-        self._num_iters = num_iterations
         self._eng = eng
         self._imuf = imuf
         self._tracker_queue = tracker_queue
+        self._imu_queue = imu_queue
 
     def run_data_creation(self):
         print("Run data creation is starting")
-        device = serial.Serial("COM3", 250000)
-        lastTime = time.time()
-        task = None
-        imu_queue = deque()  # Add artificial delay to match camera feed
-        for _ in range(self._num_iters):
+
+        last_imu_time = None
+        while True:
             if self._should_end:
                 print("Data source saw that it was told to stop")
                 break
 
             try:
-                # print(f"Queue size: {self._tracker_queue.qsize()}")
-                while self._tracker_queue.qsize() > 3:
+                while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
                 camera_position, camera_orientation = self._tracker_queue.get_nowait()
                 self._eng.update_tracker(
@@ -169,10 +152,13 @@ class ImuDataSource(QtCore.QObject):
             except queue.Empty:
                 pass
 
-            accel, gyro = readVals(device)
-            imu_queue.append((accel, gyro))
-            if task is not None:
-                (position, orientation) = task.result()
+            while self._imu_queue.qsize() > 3:
+                accel, gyro, t = self._imu_queue.get()
+                dt = 0.01 if last_imu_time is None else (t - last_imu_time) / 1000
+                last_imu_time = t
+                position, orientation = self._eng.step(
+                    self._imuf, accel, gyro, dt, nargout=2, background=False
+                )
                 self.new_data.emit(
                     {
                         "position": list(position[0]),
@@ -180,15 +166,6 @@ class ImuDataSource(QtCore.QObject):
                     }
                 )
 
-            if len(imu_queue) > 4:
-                accel, gyro = imu_queue.popleft()
-                currentTime = time.time()
-                dt = currentTime - lastTime
-                task = self._eng.step(
-                    self._imuf, accel, gyro, dt, nargout=2, background=True
-                )
-                # task.done
-                lastTime = currentTime
         print("Data source finishing")
         self.finished.emit()
 
@@ -208,17 +185,22 @@ if __name__ == "__main__":
     app.create()
 
     tracker_queue = mp.Queue()
+    imu_queue = mp.Queue()
     eng = matlab.engine.connect_matlab()
     canvas_wrapper = CanvasWrapper(eng)
     win = MainWindow(canvas_wrapper)
     data_thread = QtCore.QThread(parent=win)
     # camera_thread = QtCore.QThread(parent=win)
     imuf = eng.ImuFusion()
-    data_source = ImuDataSource(eng, imuf, tracker_queue)
+    data_source = SensorDataSource(eng, imuf, tracker_queue, imu_queue)
     data_source.moveToThread(data_thread)
 
-    camera_process = mp.Process(target=run_tracker_with_queue, args=(tracker_queue,))
+    camera_process = mp.Process(
+        target=run_tracker_with_queue, args=(tracker_queue,), daemon=False
+    )
     camera_process.start()
+    imu_process = mp.Process(target=monitor_ble, args=(imu_queue,), daemon=False)
+    imu_process.start()
 
     # update the visualization when there is new data
     data_source.new_data.connect(canvas_wrapper.update_data)
@@ -238,8 +220,9 @@ if __name__ == "__main__":
 
     win.show()
     data_thread.start()
-    # camera_thread.start()
-    app.run()
 
+    app.run()
+    camera_process.terminate()
+    imu_process.terminate()
     print("Waiting for data source to close gracefully...")
-    data_thread.wait(5000)
+    data_thread.wait(500)
