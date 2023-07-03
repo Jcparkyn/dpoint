@@ -75,14 +75,14 @@ def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarra
 
 
 markersOnPen = {
-    0: getCornersPS(np.array([0, 0.147, 0.01], dtype=np.float32), deg2rad(45)),
-    1: getCornersPS(np.array([0, 0.147, 0.01], dtype=np.float32), deg2rad(135)),
-    2: getCornersPS(np.array([0, 0.147, 0.01], dtype=np.float32), deg2rad(225)),
-    3: getCornersPS(np.array([0, 0.147, 0.01], dtype=np.float32), deg2rad(315)),
-    4: getCornersPS(np.array([0, 0.1175, 0.011], dtype=np.float32), deg2rad(90)),
-    5: getCornersPS(np.array([0, 0.1175, 0.011], dtype=np.float32), deg2rad(180)),
-    6: getCornersPS(np.array([0, 0.1170, 0.011], dtype=np.float32), deg2rad(270)),
-    7: getCornersPS(np.array([0, 0.1175, 0.011], dtype=np.float32), deg2rad(5)),
+    0: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(45)),
+    1: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(135)),
+    2: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(225)),
+    3: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(315)),
+    4: getCornersPS(np.array([0, 0.1205, 0.011], dtype=np.float32), deg2rad(90)),
+    5: getCornersPS(np.array([0, 0.1205, 0.011], dtype=np.float32), deg2rad(180)),
+    6: getCornersPS(np.array([0, 0.1200, 0.011], dtype=np.float32), deg2rad(270)),
+    7: getCornersPS(np.array([0, 0.1205, 0.011], dtype=np.float32), deg2rad(5)),
 }
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
