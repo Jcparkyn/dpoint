@@ -5,8 +5,6 @@ classdef ImuFusion < handle
         Gyro
         Camera
         FUSE
-        update_count = 0;
-        track_orientation = quaternion(1,0,0,0);
     end
     
     methods
@@ -51,14 +49,11 @@ classdef ImuFusion < handle
             tip_pos = position + rotatepoint(orientation_quat, [0 .143 0]);
             position = tip_pos;
 
-            obj.update_count = obj.update_count + 1;
-
             check_divergence(obj);
         end
 
         function update_tracker(obj, orientation_mat, tip_pos_opencv)
             or_quat = get_orientation_quat(obj,orientation_mat);
-            obj.track_orientation = or_quat;
             tip_pos = [tip_pos_opencv(1), -tip_pos_opencv(2), -tip_pos_opencv(3)];
             imu_pos = tip_pos - rotatepoint(or_quat, [0 .143 0]);
 

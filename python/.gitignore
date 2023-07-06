@@ -3,3 +3,5 @@ venv
 __pycache__
 
 *.blend1
+
+*.received.txt

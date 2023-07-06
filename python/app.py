@@ -1,5 +1,4 @@
 # Parts of this file were scaffolded from https://github.com/vispy/vispy/blob/main/examples/scene/realtime_data/ex03b_data_sources_threaded_loop.py
-from collections import deque
 from PyQt6 import QtWidgets, QtCore
 
 import vispy
@@ -10,13 +9,10 @@ from vispy.app import use_app
 from vispy.util import quaternion
 from vispy.visuals import transforms
 
-import time
 import numpy as np
-import serial
-import time
-import matlab.engine
 import queue
 import multiprocessing as mp
+from filter import ekf_predict, fuse_camera, fuse_imu, get_tip_pose, initial_state
 
 from marker_tracker import run_tracker
 from monitor_ble import monitor_ble
@@ -49,8 +45,7 @@ def get_line_color(line: np.ndarray):
 
 
 class CanvasWrapper:
-    def __init__(self, eng):
-        self._eng = eng
+    def __init__(self):
         self.canvas = SceneCanvas(size=CANVAS_SIZE, keys="interactive")
         self.canvas.measure_fps()
         self.grid = self.canvas.central_widget.add_grid()
@@ -60,7 +55,9 @@ class CanvasWrapper:
             up="z", fov=0, center=(0, 0, 0), elevation=90, azimuth=0, scale_factor=0.3
         )
         vertices, faces, normals, texcoords = read_mesh("pen.obj")
-        self.pen_mesh = visuals.Mesh(vertices, faces, color=(1, .5, .5, 1), parent=self.view_top.scene)
+        self.pen_mesh = visuals.Mesh(
+            vertices, faces, color=(1, 0.5, 0.5, 1), parent=self.view_top.scene
+        )
         self.pen_mesh.transform = transforms.MatrixTransform()
 
         pen_tip = visuals.XYZAxis(parent=self.pen_mesh)
@@ -114,24 +111,22 @@ class MainWindow(QtWidgets.QMainWindow):
         self.closing.emit()
         return super().closeEvent(event)
 
+
 class SensorDataSource(QtCore.QObject):
     new_data = QtCore.pyqtSignal(dict)
     finished = QtCore.pyqtSignal()
 
     def __init__(
         self,
-        eng: matlab.engine.MatlabEngine,
-        imuf,
         tracker_queue: mp.Queue,
         imu_queue: mp.Queue,
         parent=None,
     ):
         super().__init__(parent)
         self._should_end = False
-        self._eng = eng
-        self._imuf = imuf
         self._tracker_queue = tracker_queue
         self._imu_queue = imu_queue
+        self._filter_state = initial_state()
 
     def run_data_creation(self):
         print("Run data creation is starting")
@@ -146,8 +141,8 @@ class SensorDataSource(QtCore.QObject):
                 while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
                 camera_position, camera_orientation = self._tracker_queue.get_nowait()
-                self._eng.update_tracker(
-                    self._imuf, camera_position, camera_orientation, nargout=0
+                self._filter_state = fuse_camera(
+                    self._filter_state, camera_position, camera_orientation
                 )
             except queue.Empty:
                 pass
@@ -156,13 +151,13 @@ class SensorDataSource(QtCore.QObject):
                 accel, gyro, t = self._imu_queue.get()
                 dt = 0.01 if last_imu_time is None else (t - last_imu_time) / 1000
                 last_imu_time = t
-                position, orientation = self._eng.step(
-                    self._imuf, accel, gyro, dt, nargout=2, background=False
-                )
+                self._filter_state = ekf_predict(self._filter_state, dt)
+                self._filter_state = fuse_imu(self._filter_state, accel, gyro)
+                position, orientation = get_tip_pose(self._filter_state)
                 self.new_data.emit(
                     {
-                        "position": list(position[0]),
-                        "orientation": list(orientation[0]),
+                        "position": list(position),
+                        "orientation": list(orientation),
                     }
                 )
 
@@ -176,7 +171,7 @@ class SensorDataSource(QtCore.QObject):
 
 def run_tracker_with_queue(queue: mp.Queue):
     run_tracker(
-        lambda orientation, position: queue.put((orientation, position), block=False)
+        lambda orientation, position: queue.put((position, orientation), block=False)
     )
 
 
@@ -186,19 +181,18 @@ if __name__ == "__main__":
 
     tracker_queue = mp.Queue()
     imu_queue = mp.Queue()
-    eng = matlab.engine.connect_matlab()
-    canvas_wrapper = CanvasWrapper(eng)
+    canvas_wrapper = CanvasWrapper()
     win = MainWindow(canvas_wrapper)
     data_thread = QtCore.QThread(parent=win)
     # camera_thread = QtCore.QThread(parent=win)
-    imuf = eng.ImuFusion()
-    data_source = SensorDataSource(eng, imuf, tracker_queue, imu_queue)
+    data_source = SensorDataSource(tracker_queue, imu_queue)
     data_source.moveToThread(data_thread)
 
     camera_process = mp.Process(
         target=run_tracker_with_queue, args=(tracker_queue,), daemon=False
     )
     camera_process.start()
+    # imu_process = threading.Thread(target=monitor_ble, args=(imu_queue,), daemon=False)
     imu_process = mp.Process(target=monitor_ble, args=(imu_queue,), daemon=False)
     imu_process.start()
 
