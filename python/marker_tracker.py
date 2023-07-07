@@ -241,7 +241,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                     frame, cameraMatrix, distCoeffs
                 )
 
-        if len(validMarkers) >= 2:
+        if len(validMarkers) >= 1:
             screenCorners = np.concatenate(
                 [cornersIS for _, _, cornersIS in validMarkers]
             )

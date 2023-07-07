@@ -36,8 +36,8 @@ gravity_vector = np.array([0, 0, 9.81])
 accel_noise = 1e-3
 gyro_noise = 1e-6
 imu_noise = np.diag([accel_noise] * 3 + [gyro_noise] * 3)
-camera_noise_pos = 0.5e-5
-camera_noise_or = 0.5e-4
+camera_noise_pos = 0.2e-5
+camera_noise_or = 0.8e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
 
