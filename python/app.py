@@ -17,7 +17,7 @@ from filter import ekf_predict, fuse_camera, fuse_imu, get_tip_pose, initial_sta
 from marker_tracker import run_tracker
 from monitor_ble import monitor_ble
 
-CANVAS_SIZE = (1080, 1920)  # (width, height)
+CANVAS_SIZE = (1080, 1080)  # (width, height)
 NUM_LINE_POINTS = 400
 TRAIL_POINTS = 1000
 
@@ -52,7 +52,7 @@ class CanvasWrapper:
 
         self.view_top = self.grid.add_view(0, 0, bgcolor="grey")
         self.view_top.camera = scene.TurntableCamera(
-            up="z", fov=0, center=(0, 0, 0), elevation=90, azimuth=0, scale_factor=0.3
+            up="z", fov=0, center=(-0.10, -0.13, 0), elevation=90, azimuth=0, scale_factor=0.3
         )
         vertices, faces, normals, texcoords = read_mesh("pen.obj")
         self.pen_mesh = visuals.Mesh(
@@ -183,6 +183,7 @@ if __name__ == "__main__":
     imu_queue = mp.Queue()
     canvas_wrapper = CanvasWrapper()
     win = MainWindow(canvas_wrapper)
+    win.resize(*CANVAS_SIZE)
     data_thread = QtCore.QThread(parent=win)
     # camera_thread = QtCore.QThread(parent=win)
     data_source = SensorDataSource(tracker_queue, imu_queue)
