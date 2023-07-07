@@ -64,7 +64,7 @@ void stop_ble() {
 }
 
 float wakeUpThreshold = 500.0f; // degrees per second
-float stayAwakeThreshold = 10.0f; // degrees per second
+float stayAwakeThreshold = 20.0f; // degrees per second
 unsigned long stayAwakeTime = 1000*60*2; // milliseconds
 
 void run_ble() {
