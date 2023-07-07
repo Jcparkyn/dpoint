@@ -251,11 +251,18 @@ def ekf_predict(fs: FilterState, dt: float):
 
 def get_orientation_quat(orientation_mat_opencv: Mat):
     orientation_mat = orientation_mat_opencv[:, [2, 1, 0]] * np.array([[-1, 1, 1]]).T
-    quat = Quaternion(matrix=orientation_mat).normalised
-    # Make sure the scalar component is positive, so that we don't have discontinuities.
-    if quat.scalar < 0:
-        quat = -quat
-    return quat
+    return Quaternion(matrix=orientation_mat).normalised
+
+
+def nearest_quaternion(reference: Mat, new: Mat):
+    """
+    Find the sign for new that makes it as close to reference as possible.
+    Changing the sign of a quaternion does not change its rotation, but affects
+    the difference from the reference quaternion.
+    """
+    error1 = np.linalg.norm(reference - new)
+    error2 = np.linalg.norm(reference + new)
+    return new if error1 < error2 else -new
 
 
 def fuse_imu(fs: FilterState, accel: np.ndarray, gyro: np.ndarray):
@@ -275,7 +282,8 @@ def fuse_camera(
     or_quat = get_orientation_quat(orientation_mat)
     tip_pos = tip_pos_opencv.flatten() * [1, -1, -1]
     imu_pos = tip_pos - or_quat.rotate(np.array([0, 0.143, 0]))
-    z = np.concatenate([imu_pos, or_quat.normalised.elements])  # actual measurement
+    or_quat_smoothed = nearest_quaternion(fs.state[i_quat], or_quat.elements)
+    z = np.concatenate([imu_pos, or_quat_smoothed])  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, camera_noise)
     state[i_quat] = repair_quaternion(state[i_quat])
     return FilterState(state, statecov)
