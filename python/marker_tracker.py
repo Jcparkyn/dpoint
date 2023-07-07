@@ -103,6 +103,8 @@ arucoParams.maxMarkerPerimeterRate = 0.5
 arucoParams.minSideLengthCanonicalImg = 16
 detector = aruco.ArucoDetector(arucoDic, arucoParams)
 
+reprojectionErrorThreshold = 100  # px
+
 
 def array_to_str(arr):
     return ",".join(map(lambda x: f"{x*100:+2.1f}", list(arr.flat)))
@@ -148,6 +150,39 @@ def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
     )
     # cv2.imshow("Charuco", display_frame)
     return (rvec, tvec)
+
+
+def solve_pnp(
+    initialized, prevRvec, prevTvec, objectPoints, imagePoints, cameraMatrix, distCoeffs
+) -> Tuple[bool, np.ndarray, np.ndarray]:
+    """Attempt to refine the previous pose. If this fails, fall back to EPnP."""
+    if initialized:
+        rvec, tvec = cv2.solvePnPRefineLM(
+            objectPoints,
+            imagePoints,
+            cameraMatrix=cameraMatrix,
+            distCoeffs=distCoeffs,
+            rvec=prevRvec,
+            tvec=prevTvec,
+        )
+        projectedImagePoints, _ = cv2.projectPoints(
+            objectPoints, rvec, tvec, cameraMatrix, distCoeffs, None
+        )
+        projectedImagePoints = projectedImagePoints[:, 0, :]
+        reprojectionError = np.sum(
+            np.linalg.norm(projectedImagePoints - imagePoints, axis=1)
+        )
+        if reprojectionError < reprojectionErrorThreshold:
+            return (True, rvec, tvec)
+
+    success, rvec, tvec = cv2.solvePnP(
+        objectPoints,
+        imagePoints,
+        cameraMatrix=cameraMatrix,
+        distCoeffs=distCoeffs,
+        flags=cv2.SOLVEPNP_EPNP, # SQPNP doesn't seem to work properly
+    )
+    return (success, rvec, tvec)
 
 
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
@@ -206,20 +241,20 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                     frame, cameraMatrix, distCoeffs
                 )
 
-        if len(validMarkers) >= 1:
+        if len(validMarkers) >= 2:
             screenCorners = np.concatenate(
                 [cornersIS for _, _, cornersIS in validMarkers]
             )
             penCorners = np.concatenate([cornersPS for _, cornersPS, _ in validMarkers])
-            success, rvec, tvec = cv2.solvePnP(
-                penCorners,
-                screenCorners,
+
+            initialized, rvec, tvec = solve_pnp(
+                initialized,
+                rvec,
+                tvec,
+                objectPoints=penCorners,
+                imagePoints=screenCorners,
                 cameraMatrix=cameraMatrix,
                 distCoeffs=distCoeffs,
-                rvec=rvec,
-                tvec=tvec,
-                useExtrinsicGuess=initialized,
-                flags=cv2.SOLVEPNP_ITERATIVE,
             )
 
             rvecRelative, tvecRelative = relativeTransform(
@@ -237,7 +272,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             )
             if on_estimate is not None:
                 on_estimate(Rrelative, tvecRelative)
-            initialized = success
+            # initialized = success
         else:
             initialized = False
 
