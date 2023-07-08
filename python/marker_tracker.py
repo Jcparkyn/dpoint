@@ -89,16 +89,11 @@ markersOnPen = {
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
 arucoParams = aruco.DetectorParameters()
-arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_CONTOUR
 arucoParams.cornerRefinementWinSize = 2
-# arucoParams.cornerRefinementMaxIterations = 30
-# arucoParams.cornerRefinementMinAccuracy = 0.01
-# arucoParams.errorCorrectionRate = 0.99
-# arucoParams.maxErroneousBitsInBorderRate = 0.99
 # Reduce the number of threshold steps, which significantly improves performance
 arucoParams.adaptiveThreshWinSizeMin = 23
 arucoParams.adaptiveThreshWinSizeMax = 23
-# arucoParams.adaptiveThreshWinSizeStep = 1000
 arucoParams.useAruco3Detection = False
 arucoParams.minMarkerPerimeterRate = 0.02
 arucoParams.maxMarkerPerimeterRate = 0.5

@@ -35,19 +35,19 @@ Q = np.diag(additive_noise)
 
 state_size = 22
 gravity_vector = np.array([0, 0, -9.81])
-accel_noise = 1e-3
-gyro_noise = 1e-6
+accel_noise = 2e-3
+gyro_noise = 1e-5
 imu_noise = np.diag([accel_noise] * 3 + [gyro_noise] * 3)
-camera_noise_pos = 0.2e-5
-camera_noise_or = 0.8e-4
+camera_noise_pos = 0.1e-5
+camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
 
 def initial_state():
     state = np.zeros(state_size, dtype=np.float64)
     state[i_quat] = [1, 0, 0, 0]
-    statecov = np.zeros((state_size, state_size))
-    statecov[i_quat, i_quat] = 0.3
+    statecov = np.eye(state_size)*0.01
+    # statecov[i_quat, i_quat] = 0.3
     return FilterState(state, statecov)
 
 
