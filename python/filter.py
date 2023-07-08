@@ -34,7 +34,7 @@ additive_noise[i_gyrobias] = 0
 Q = np.diag(additive_noise)
 
 state_size = 22
-gravity_vector = np.array([0, 0, 9.81])
+gravity_vector = np.array([0, 0, -9.81])
 accel_noise = 1e-3
 gyro_noise = 1e-6
 imu_noise = np.diag([accel_noise] * 3 + [gyro_noise] * 3)
@@ -252,8 +252,7 @@ def ekf_predict(fs: FilterState, dt: float):
 
 
 def get_orientation_quat(orientation_mat_opencv: Mat):
-    orientation_mat = orientation_mat_opencv[:, [2, 1, 0]] * np.array([[-1, 1, 1]]).T
-    return Quaternion(matrix=orientation_mat).normalised
+    return Quaternion(matrix=orientation_mat_opencv).normalised
 
 
 def nearest_quaternion(reference: Mat, new: Mat):
@@ -269,8 +268,8 @@ def nearest_quaternion(reference: Mat, new: Mat):
 
 def fuse_imu(fs: FilterState, accel: np.ndarray, gyro: np.ndarray):
     h, H = imu_measurement(fs.state)
-    accel2 = np.array([-accel[1], -accel[0], accel[2]])
-    gyro2 = np.array([gyro[1], gyro[0], -gyro[2]])
+    accel2 = np.array([-accel[2], accel[0], accel[1]])
+    gyro2 = np.array([gyro[2], -gyro[0], -gyro[1]])
     z = np.concatenate([accel2, gyro2])  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, imu_noise)
     state[i_quat] = repair_quaternion(state[i_quat])
@@ -278,13 +277,12 @@ def fuse_imu(fs: FilterState, accel: np.ndarray, gyro: np.ndarray):
 
 
 def fuse_camera(
-    fs: FilterState, imu_pos_opencv: np.ndarray, orientation_mat: np.ndarray
+    fs: FilterState, imu_pos: np.ndarray, orientation_mat: np.ndarray
 ):
     h, H = camera_measurement(fs.state)
     or_quat = get_orientation_quat(orientation_mat)
-    imu_pos = imu_pos_opencv.flatten() * [1, -1, -1]
     or_quat_smoothed = nearest_quaternion(fs.state[i_quat], or_quat.elements)
-    z = np.concatenate([imu_pos, or_quat_smoothed])  # actual measurement
+    z = np.concatenate([imu_pos.flatten(), or_quat_smoothed])  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, camera_noise)
     state[i_quat] = repair_quaternion(state[i_quat])
     return FilterState(state, statecov)
@@ -294,5 +292,5 @@ def get_tip_pose(fs: FilterState) -> Tuple[Mat, Mat]:
     pos = fs.state[i_pos]
     orientation = fs.state[i_quat]
     orientation_quat = Quaternion(array=orientation)
-    tip_pos = pos + orientation_quat.rotate(np.array([0, STYLUS_LENGTH, 0]) + IMU_OFFSET)
+    tip_pos = pos - orientation_quat.rotate(np.array([0, STYLUS_LENGTH, 0]) + IMU_OFFSET)
     return (tip_pos, orientation)

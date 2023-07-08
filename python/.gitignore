@@ -5,3 +5,5 @@ __pycache__
 *.blend1
 
 *.received.txt
+
+!pen.obj

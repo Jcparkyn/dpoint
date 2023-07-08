@@ -52,7 +52,7 @@ class CanvasWrapper:
 
         self.view_top = self.grid.add_view(0, 0, bgcolor="grey")
         self.view_top.camera = scene.TurntableCamera(
-            up="z", fov=0, center=(-0.10, -0.13, 0), elevation=90, azimuth=0, scale_factor=0.3
+            up="z", fov=0, center=(0.10, 0.13, 0), elevation=90, azimuth=0, scale_factor=0.3
         )
         vertices, faces, normals, texcoords = read_mesh("pen.obj")
         self.pen_mesh = visuals.Mesh(
@@ -71,22 +71,21 @@ class CanvasWrapper:
         )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
+        # This is broken for now, see https://github.com/vispy/vispy/issues/2363
+        # grid = scene.visuals.GridLines(parent=self.view_top.scene)
 
     def update_data(self, new_data_dict):
         orientation = new_data_dict["orientation"]
         orientation_quat = quaternion.Quaternion(
-            orientation[0], orientation[1], orientation[3], orientation[2]
-        )
-        or_fix = vispy.util.transforms.rotate(90, [1, 0, 0])
+            *orientation
+        ).inverse()
         pos = new_data_dict["position"]
-        pos_converted = np.array([-pos[0], pos[1], -pos[2]])
         self.pen_mesh.transform.matrix = (
             orientation_quat.get_matrix()
-            @ or_fix
-            @ vispy.util.transforms.translate(pos_converted)
+            @ vispy.util.transforms.translate(pos)
         )
         self.trail_line.set_data(
-            append_line_point(self.trail_line.pos, pos_converted),
+            append_line_point(self.trail_line.pos, pos),
             color=get_line_color(self.trail_line.pos),
         )
 
@@ -176,6 +175,7 @@ def run_tracker_with_queue(queue: mp.Queue):
 
 
 if __name__ == "__main__":
+    np.set_printoptions(precision=3, suppress=True, formatter={"float": "{: >5.2f}".format})
     app = use_app("pyqt6")
     app.create()
 
