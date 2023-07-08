@@ -5,6 +5,8 @@ from typing import Tuple, Callable, Optional
 import time
 import sys
 
+from dimensions import IMU_OFFSET
+
 
 def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
     fs = cv2.FileStorage(filename, cv2.FILE_STORAGE_READ)
@@ -55,7 +57,7 @@ markerCorners = np.array(
 def getCornersPS(origin: np.ndarray, angleY: float) -> np.ndarray:
     cornersWS = markerCorners + origin
     rotated_corners = np.apply_along_axis(lambda x: rotateY(angleY, x), 1, cornersWS)
-    return rotated_corners
+    return rotated_corners - IMU_OFFSET
 
 
 def deg2rad(deg: float) -> float:
@@ -75,14 +77,14 @@ def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarra
 
 
 markersOnPen = {
-    0: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(45)),
-    1: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(135)),
-    2: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(225)),
-    3: getCornersPS(np.array([0, 0.15, 0.01], dtype=np.float32), deg2rad(315)),
-    4: getCornersPS(np.array([0, 0.1205, 0.011], dtype=np.float32), deg2rad(90)),
-    5: getCornersPS(np.array([0, 0.1205, 0.011], dtype=np.float32), deg2rad(180)),
-    6: getCornersPS(np.array([0, 0.1200, 0.011], dtype=np.float32), deg2rad(270)),
-    7: getCornersPS(np.array([0, 0.1205, 0.011], dtype=np.float32), deg2rad(5)),
+    0: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(45)),
+    1: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(135)),
+    2: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(225)),
+    3: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(315)),
+    4: getCornersPS(np.array([0, -0.040, 0.011], dtype=np.float32), deg2rad(90)),
+    5: getCornersPS(np.array([0, -0.040, 0.011], dtype=np.float32), deg2rad(180)),
+    6: getCornersPS(np.array([0, -0.041, 0.011], dtype=np.float32), deg2rad(270)),
+    7: getCornersPS(np.array([0, -0.040, 0.011], dtype=np.float32), deg2rad(5)),
 }
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
@@ -180,7 +182,7 @@ def solve_pnp(
         imagePoints,
         cameraMatrix=cameraMatrix,
         distCoeffs=distCoeffs,
-        flags=cv2.SOLVEPNP_EPNP, # SQPNP doesn't seem to work properly
+        flags=cv2.SOLVEPNP_SQPNP,
     )
     return (success, rvec, tvec)
 

@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from numpy import typing as npt
 from pyquaternion import Quaternion
 
+from dimensions import IMU_OFFSET, STYLUS_LENGTH
+
 Mat = npt.NDArray[np.float64]
 
 
@@ -276,12 +278,11 @@ def fuse_imu(fs: FilterState, accel: np.ndarray, gyro: np.ndarray):
 
 
 def fuse_camera(
-    fs: FilterState, tip_pos_opencv: np.ndarray, orientation_mat: np.ndarray
+    fs: FilterState, imu_pos_opencv: np.ndarray, orientation_mat: np.ndarray
 ):
     h, H = camera_measurement(fs.state)
     or_quat = get_orientation_quat(orientation_mat)
-    tip_pos = tip_pos_opencv.flatten() * [1, -1, -1]
-    imu_pos = tip_pos - or_quat.rotate(np.array([0, 0.143, 0]))
+    imu_pos = imu_pos_opencv.flatten() * [1, -1, -1]
     or_quat_smoothed = nearest_quaternion(fs.state[i_quat], or_quat.elements)
     z = np.concatenate([imu_pos, or_quat_smoothed])  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, camera_noise)
@@ -293,5 +294,5 @@ def get_tip_pose(fs: FilterState) -> Tuple[Mat, Mat]:
     pos = fs.state[i_pos]
     orientation = fs.state[i_quat]
     orientation_quat = Quaternion(array=orientation)
-    tip_pos = pos + orientation_quat.rotate(np.array([0, 0.143, 0]))
+    tip_pos = pos + orientation_quat.rotate(np.array([0, STYLUS_LENGTH, 0]) + IMU_OFFSET)
     return (tip_pos, orientation)
