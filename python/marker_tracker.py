@@ -154,7 +154,7 @@ def solve_pnp(
 ) -> Tuple[bool, np.ndarray, np.ndarray]:
     """Attempt to refine the previous pose. If this fails, fall back to EPnP."""
     if initialized:
-        rvec, tvec = cv2.solvePnPRefineLM(
+        rvec, tvec = cv2.solvePnPRefineVVS(
             objectPoints,
             imagePoints,
             cameraMatrix=cameraMatrix,
