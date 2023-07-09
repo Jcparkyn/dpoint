@@ -100,7 +100,7 @@ arucoParams.maxMarkerPerimeterRate = 0.5
 arucoParams.minSideLengthCanonicalImg = 16
 detector = aruco.ArucoDetector(arucoDic, arucoParams)
 
-reprojectionErrorThreshold = 100  # px
+reprojectionErrorThreshold = 2  # px
 
 
 def array_to_str(arr):
@@ -166,7 +166,7 @@ def solve_pnp(
             objectPoints, rvec, tvec, cameraMatrix, distCoeffs, None
         )
         projectedImagePoints = projectedImagePoints[:, 0, :]
-        reprojectionError = np.sum(
+        reprojectionError = np.mean(
             np.linalg.norm(projectedImagePoints - imagePoints, axis=1)
         )
         if reprojectionError < reprojectionErrorThreshold:
