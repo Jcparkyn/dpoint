@@ -104,7 +104,7 @@ reprojectionErrorThreshold = 2  # px
 
 
 def array_to_str(arr):
-    return ",".join(map(lambda x: f"{x*100:+2.1f}", list(arr.flat)))
+    return ",".join(map(lambda x: f"{x:+2.1f}", list(arr.flat)))
 
 
 charuco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
@@ -257,11 +257,18 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             rvecRelative, tvecRelative = relativeTransform(
                 rvec, tvec, baseRvec, baseTvec
             )
+            tip_to_imu_offset = -np.array(IMU_OFFSET) - [0, STYLUS_LENGTH, 0]
+            rvecTip, tvecTip, *_ = cv2.composeRT(
+                np.zeros(3), tip_to_imu_offset, rvec, tvec
+            )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, markerLength)
+            cv2.drawFrameAxes(
+                frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, markerLength
+            )
             cv2.putText(
                 frame,
-                f"Tip: [{array_to_str(tvecRelative)}]",
+                f"IMU: [{array_to_str(tvecRelative*100)}]cm",
                 (10, 120),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
