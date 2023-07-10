@@ -5,7 +5,7 @@ from typing import Tuple, Callable, Optional
 import time
 import sys
 
-from dimensions import IMU_OFFSET
+from dimensions import IMU_OFFSET, STYLUS_LENGTH
 
 
 def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -118,10 +118,10 @@ def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
     if len(corners) == 0:
         raise Exception("No markers detected")
     display_frame = aruco.drawDetectedMarkers(image=frame, corners=corners)
-    response, charuco_corners, charuco_ids = aruco.interpolateCornersCharuco(
+    num_corners, charuco_corners, charuco_ids = aruco.interpolateCornersCharuco(
         markerCorners=corners, markerIds=ids, image=frame, board=charuco_board
     )
-    if len(charuco_corners) < 5:
+    if num_corners < 5:
         raise Exception("Not enough corners detected")
     display_frame = aruco.drawDetectedCornersCharuco(
         image=display_frame, charucoCorners=charuco_corners, charucoIds=charuco_ids
@@ -206,22 +206,28 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
         elif keypress == ord("d"):
             webcam.set(cv2.CAP_PROP_FOCUS, webcam.get(cv2.CAP_PROP_FOCUS) - 5)
 
+        frame: np.ndarray
         ret, frame = webcam.read()
 
         if keypress == ord("s"):
             focus = round(webcam.get(cv2.CAP_PROP_FOCUS))
             filepath = f"calibration_pics/f{focus}/{round(time.time())}.jpg"
             success = cv2.imwrite(filepath, frame)
-            # success = cv2.imwrite(f"calibration_pics/f30/1234.png", frame)
             print(f"save: {success}, {filepath}")
 
         processingStartTime = time.perf_counter()
         # cv2.flip(frame, -1, frame)
 
         ids: np.ndarray
-        allCornersIS: np.ndarray
         allCornersIS, ids, rejected = detector.detectMarkers(frame)
         aruco.drawDetectedMarkers(frame, allCornersIS, ids)
+
+        if not calibrated or keypress == ord("c"):
+            calibrated = True
+            print("Calibrating...")
+            baseRvec, baseTvec = estimate_camera_pose_charuco(
+                frame, cameraMatrix, distCoeffs
+            )
 
         validMarkers = []
         if ids is not None:
@@ -230,13 +236,6 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 if id in markersOnPen:
                     cornersPS = markersOnPen[id]
                     validMarkers.append((id, cornersPS, cornersIS))
-
-            if not calibrated or keypress == ord("c"):
-                calibrated = True
-                print("Calibrating...")
-                baseRvec, baseTvec = estimate_camera_pose_charuco(
-                    frame, cameraMatrix, distCoeffs
-                )
 
         if len(validMarkers) >= 1:
             screenCorners = np.concatenate(
