@@ -77,23 +77,23 @@ def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarra
 
 
 markersOnPen = {
-    0: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(45)),
-    1: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(135)),
-    2: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(225)),
-    3: getCornersPS(np.array([0, -0.011, 0.01], dtype=np.float32), deg2rad(315)),
-    4: getCornersPS(np.array([0, -0.040, 0.011], dtype=np.float32), deg2rad(90)),
-    5: getCornersPS(np.array([0, -0.040, 0.011], dtype=np.float32), deg2rad(180)),
-    6: getCornersPS(np.array([0, -0.041, 0.011], dtype=np.float32), deg2rad(270)),
-    7: getCornersPS(np.array([0, -0.040, 0.011], dtype=np.float32), deg2rad(5)),
+    99: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
+    98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(135)),
+    97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
+    96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
+    95: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(90)),
+    94: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(180)),
+    93: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(270)),
+    92: getCornersPS(np.array([0, -0.0387, 0.01], dtype=np.float32), deg2rad(0)),
 }
 
-arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
 arucoParams = aruco.DetectorParameters()
 arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_CONTOUR
 arucoParams.cornerRefinementWinSize = 2
 # Reduce the number of threshold steps, which significantly improves performance
-arucoParams.adaptiveThreshWinSizeMin = 23
-arucoParams.adaptiveThreshWinSizeMax = 23
+arucoParams.adaptiveThreshWinSizeMin = 15
+arucoParams.adaptiveThreshWinSizeMax = 15
 arucoParams.useAruco3Detection = False
 arucoParams.minMarkerPerimeterRate = 0.02
 arucoParams.maxMarkerPerimeterRate = 0.5
