@@ -1,3 +1,4 @@
+import math
 import cv2
 from cv2 import aruco
 import numpy as np
@@ -100,7 +101,7 @@ arucoParams.maxMarkerPerimeterRate = 0.5
 arucoParams.minSideLengthCanonicalImg = 16
 detector = aruco.ArucoDetector(arucoDic, arucoParams)
 
-reprojectionErrorThreshold = 2  # px
+reprojectionErrorThreshold = 3  # px
 
 
 def array_to_str(arr):
@@ -149,6 +150,11 @@ def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
     return (rvec, tvec)
 
 
+def vector_rms(arr: np.ndarray, axis: int):
+    """Computes the RMS magnitude of an array of vectors."""
+    return math.sqrt(np.mean(np.sum(np.square(arr), axis=axis)))
+
+
 def solve_pnp(
     initialized, prevRvec, prevTvec, objectPoints, imagePoints, cameraMatrix, distCoeffs
 ) -> Tuple[bool, np.ndarray, np.ndarray]:
@@ -166,11 +172,12 @@ def solve_pnp(
             objectPoints, rvec, tvec, cameraMatrix, distCoeffs, None
         )
         projectedImagePoints = projectedImagePoints[:, 0, :]
-        reprojectionError = np.mean(
-            np.linalg.norm(projectedImagePoints - imagePoints, axis=1)
-        )
+        reprojectionError = vector_rms(projectedImagePoints - imagePoints, axis=1)
+
         if reprojectionError < reprojectionErrorThreshold:
             return (True, rvec, tvec)
+        else:
+            print(f"Reprojection error too high: {reprojectionError}")
 
     success, rvec, tvec = cv2.solvePnP(
         objectPoints,
