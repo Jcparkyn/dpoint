@@ -1,4 +1,5 @@
-from typing import Tuple
+from collections import deque
+from typing import Deque, Tuple
 import numpy as np
 from dataclasses import dataclass
 from numpy import typing as npt
@@ -13,6 +14,14 @@ Mat = npt.NDArray[np.float64]
 class FilterState:
     state: Mat
     statecov: Mat
+
+
+@dataclass
+class HistoryItem:
+    updated_state: Mat
+    updated_statecov: Mat
+    predicted_state: Mat
+    predicted_statecov: Mat
 
 
 i_quat = [0, 1, 2, 3]
@@ -42,12 +51,13 @@ camera_noise_pos = 0.1e-5
 camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
+smoothing_length = 8
+
 
 def initial_state():
     state = np.zeros(state_size, dtype=np.float64)
     state[i_quat] = [1, 0, 0, 0]
-    statecov = np.eye(state_size)*0.01
-    # statecov[i_quat, i_quat] = 0.3
+    statecov = np.eye(state_size) * 0.01
     return FilterState(state, statecov)
 
 
@@ -243,6 +253,8 @@ def ekf_predict(fs: FilterState, dt: float):
     state = euler_integrate(fs.state, xdot, dt)
     state[i_quat] = repair_quaternion(state[i_quat])
     statecov = euler_integrate(P, Pdot, dt)
+    # statecov = P + dt * (dfdx @ P + P @ dfdx.T + Q) + dt**2 * (dfdx @ P @ dfdx.T)
+    # statecov = 0.5 * (statecov + statecov.T)
 
     if np.max(statecov) > 50 or np.max(abs(state)) > 50:
         print("Resetting state")
@@ -276,9 +288,7 @@ def fuse_imu(fs: FilterState, accel: np.ndarray, gyro: np.ndarray):
     return FilterState(state, statecov)
 
 
-def fuse_camera(
-    fs: FilterState, imu_pos: np.ndarray, orientation_mat: np.ndarray
-):
+def fuse_camera(fs: FilterState, imu_pos: np.ndarray, orientation_mat: np.ndarray):
     h, H = camera_measurement(fs.state)
     or_quat = get_orientation_quat(orientation_mat)
     or_quat_smoothed = nearest_quaternion(fs.state[i_quat], or_quat.elements)
@@ -288,9 +298,65 @@ def fuse_camera(
     return FilterState(state, statecov)
 
 
-def get_tip_pose(fs: FilterState) -> Tuple[Mat, Mat]:
-    pos = fs.state[i_pos]
-    orientation = fs.state[i_quat]
+def ekf_smooth(history: list[HistoryItem], dt: float):
+    smoothed_state = [None] * len(history)
+    smoothed_state[-1] = history[-1].updated_state
+
+    for i in reversed(range(len(history) - 1)):
+        h = history[i]
+        F = np.eye(state_size) + state_transition_jacobian(h.updated_state) * dt
+        A = h.updated_statecov @ F.T @ np.linalg.inv(history[i + 1].predicted_statecov)
+        smoothed_state[i] = h.updated_state + A @ (
+            smoothed_state[i + 1] - history[i + 1].predicted_state
+        )
+    return smoothed_state
+
+
+def get_tip_pose(state: Mat) -> Tuple[Mat, Mat]:
+    pos = state[i_pos]
+    orientation = state[i_quat]
     orientation_quat = Quaternion(array=orientation)
-    tip_pos = pos - orientation_quat.rotate(np.array([0, STYLUS_LENGTH, 0]) + IMU_OFFSET)
+    tip_pos = pos - orientation_quat.rotate(
+        np.array([0, STYLUS_LENGTH, 0]) + IMU_OFFSET
+    )
     return (tip_pos, orientation)
+
+
+class DpointFilter:
+    history: Deque[HistoryItem]
+
+    def __init__(self, dt):
+        self.history = deque()
+        self.fs = initial_state()
+        self.dt = dt
+
+    def update_imu(self, accel: np.ndarray, gyro: np.ndarray):
+        predicted = ekf_predict(self.fs, self.dt)
+        self.fs = fuse_imu(predicted, accel, gyro)
+        if len(self.history) > smoothing_length:
+            self.history.popleft()
+        self.history.append(
+            HistoryItem(
+                self.fs.state, self.fs.statecov, predicted.state, predicted.statecov
+            )
+        )
+
+    def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray):
+        self.fs = fuse_camera(self.fs, imu_pos, orientation_mat)
+        if len(self.history) == 0:
+            return []
+
+        previous = self.history.pop()  # Replace last item
+        self.history.append(
+            HistoryItem(
+                self.fs.state,
+                self.fs.statecov,
+                previous.predicted_state,
+                previous.predicted_statecov,
+            )
+        )
+        smoothed_estimates = ekf_smooth(list(self.history), self.dt)
+        return [get_tip_pose(state)[0] for state in smoothed_estimates]
+
+    def get_tip_pose(self) -> Tuple[Mat, Mat]:
+        return get_tip_pose(self.fs.state)
