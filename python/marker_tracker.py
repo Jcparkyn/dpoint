@@ -158,7 +158,7 @@ def vector_rms(arr: np.ndarray, axis: int):
 def solve_pnp(
     initialized, prevRvec, prevTvec, objectPoints, imagePoints, cameraMatrix, distCoeffs
 ) -> Tuple[bool, np.ndarray, np.ndarray]:
-    """Attempt to refine the previous pose. If this fails, fall back to EPnP."""
+    """Attempt to refine the previous pose. If this fails, fall back to SQPnP."""
     if initialized:
         rvec, tvec = cv2.solvePnPRefineVVS(
             objectPoints,
@@ -189,6 +189,47 @@ def solve_pnp(
     return (success, rvec, tvec)
 
 
+class MarkerTracker:
+    def __init__(self, cameraMatrix: np.ndarray, distCoeffs: np.ndarray):
+        self.cameraMatrix = cameraMatrix
+        self.distCoeffs = distCoeffs
+        self.rvec: Optional[np.ndarray] = None
+        self.tvec: Optional[np.ndarray] = None
+        self.initialized = False
+        pass
+
+    def process_frame(self, frame: np.ndarray):
+        ids: np.ndarray
+        allCornersIS, ids, rejected = detector.detectMarkers(frame)
+        aruco.drawDetectedMarkers(frame, allCornersIS, ids)
+        validMarkers = []
+        if ids is not None:
+            for i in range(ids.shape[0]):
+                id, cornersIS = (ids[i, 0], allCornersIS[i][0, :, :])
+                if id in markersOnPen:
+                    cornersPS = markersOnPen[id]
+                    validMarkers.append((id, cornersPS, cornersIS))
+
+        if len(validMarkers) < 1:
+            self.initialized = False
+            return None
+
+        screenCorners = np.concatenate([cornersIS for _, _, cornersIS in validMarkers])
+        penCorners = np.concatenate([cornersPS for _, cornersPS, _ in validMarkers])
+
+        self.initialized, self.rvec, self.tvec = solve_pnp(
+            self.initialized,
+            self.rvec,
+            self.tvec,
+            objectPoints=penCorners,
+            imagePoints=screenCorners,
+            cameraMatrix=self.cameraMatrix,
+            distCoeffs=self.distCoeffs,
+        )
+
+        return (self.rvec, self.tvec)
+
+
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -150)
@@ -196,12 +237,12 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
     print("Opening webcam..")
     webcam = getWebcam()
 
-    rvec, tvec = (None, None)
-    initialized = False
     calibrated = False
     baseRvec = np.zeros([3, 1])
     baseTvec = np.zeros([3, 1])
     avg_fps = 30
+
+    tracker = MarkerTracker(cameraMatrix, distCoeffs)
 
     while True:
         frameStartTime = time.perf_counter()
@@ -223,11 +264,6 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             print(f"save: {success}, {filepath}")
 
         processingStartTime = time.perf_counter()
-        # cv2.flip(frame, -1, frame)
-
-        ids: np.ndarray
-        allCornersIS, ids, rejected = detector.detectMarkers(frame)
-        aruco.drawDetectedMarkers(frame, allCornersIS, ids)
 
         if not calibrated or keypress == ord("c"):
             calibrated = True
@@ -236,30 +272,9 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 frame, cameraMatrix, distCoeffs
             )
 
-        validMarkers = []
-        if ids is not None:
-            for i in range(ids.shape[0]):
-                id, cornersIS = (ids[i, 0], allCornersIS[i][0, :, :])
-                if id in markersOnPen:
-                    cornersPS = markersOnPen[id]
-                    validMarkers.append((id, cornersPS, cornersIS))
-
-        if len(validMarkers) >= 1:
-            screenCorners = np.concatenate(
-                [cornersIS for _, _, cornersIS in validMarkers]
-            )
-            penCorners = np.concatenate([cornersPS for _, cornersPS, _ in validMarkers])
-
-            initialized, rvec, tvec = solve_pnp(
-                initialized,
-                rvec,
-                tvec,
-                objectPoints=penCorners,
-                imagePoints=screenCorners,
-                cameraMatrix=cameraMatrix,
-                distCoeffs=distCoeffs,
-            )
-
+        result = tracker.process_frame(frame)
+        if result is not None:
+            rvec, tvec = result
             rvecRelative, tvecRelative = relativeTransform(
                 rvec, tvec, baseRvec, baseTvec
             )
@@ -282,9 +297,6 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             )
             if on_estimate is not None:
                 on_estimate(Rrelative, tvecRelative)
-            # initialized = success
-        else:
-            initialized = False
 
         frameEndTime = time.perf_counter()
         fps = 1 / (frameEndTime - frameStartTime)
