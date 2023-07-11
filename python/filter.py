@@ -38,8 +38,8 @@ additive_noise[i_vel] = 1e-4
 additive_noise[i_acc] = 10
 additive_noise[i_av] = 10
 additive_noise[i_quat] = 1e-4
-additive_noise[i_accbias] = 5e-4
-additive_noise[i_gyrobias] = 0
+additive_noise[i_accbias] = 1e-4
+additive_noise[i_gyrobias] = 2e-5
 Q = np.diag(additive_noise)
 
 state_size = 22
@@ -57,7 +57,10 @@ smoothing_length = 8
 def initial_state():
     state = np.zeros(state_size, dtype=np.float64)
     state[i_quat] = [1, 0, 0, 0]
-    statecov = np.eye(state_size) * 0.01
+    covdiag = np.ones(state_size, dtype=np.float64) * 0.01
+    covdiag[i_accbias] = 1e-4
+    covdiag[i_gyrobias] = 1e-4
+    statecov = np.diag(covdiag)
     return FilterState(state, statecov)
 
 
