@@ -1,8 +1,6 @@
 #include <LSM6DS3.h>
 #include <ArduinoBLE.h>
 
-const int ledPin = LED_BUILTIN; // set ledPin to on-board LED
-
 const unsigned long rate = 120; // samples per second
 const unsigned long delayMs = 1000/rate;
 
@@ -21,13 +19,12 @@ LSM6DS3 myIMU(I2C_MODE, 0x6A); //I2C device address 0x6A
 
 void blink_error() {
   for (int i = 0; i < 11; i++) {
-    digitalWrite(ledPin, (i % 2 == 0) ? HIGH : LOW);
+    digitalWrite(LEDR, (i % 2 == 0) ? HIGH : LOW);
     delay(200);
   }
 }
 
 bool start_ble() {
-  digitalWrite(ledPin, LOW);
   if (!BLE.begin()) {
     return false;
   }
@@ -54,28 +51,19 @@ bool start_ble() {
   IMUDataPacket initialPacket = { 0 };
   imuCharacteristic.writeValue(initialPacket);
 
+  BLE.setPairable(false);
+
   BLE.advertise();
   return true;
 }
 
-void stop_ble() {
-  BLE.end();
-  digitalWrite(ledPin, HIGH);
-}
-
 float wakeUpThreshold = 500.0f; // degrees per second
 float stayAwakeThreshold = 20.0f; // degrees per second
-unsigned long stayAwakeTime = 1000*60*2; // milliseconds
+unsigned long stayAwakeTime = 1000*30; // milliseconds
 
-void run_ble() {
-  unsigned long lastMotionTime = millis();
-  while (true) {
+void run_ble(BLEDevice central) {
+  while (central.connected()) {
     unsigned long startTime = millis();
-    if (startTime - lastMotionTime > stayAwakeTime) {
-      return;
-    }
-
-    BLE.poll();
 
     float aX = myIMU.readFloatAccelX();
     float aY = myIMU.readFloatAccelY();
@@ -83,11 +71,6 @@ void run_ble() {
     float gX = myIMU.readFloatGyroX();
     float gY = myIMU.readFloatGyroY();
     float gZ = myIMU.readFloatGyroZ();
-
-    float motionAmount = gX*gX + gY*gY + gZ*gZ;
-    if (motionAmount > stayAwakeThreshold*stayAwakeThreshold) {
-      lastMotionTime = startTime;
-    }
     
     IMUDataPacket packet = {
       .accel = {aX, aY, aZ},
@@ -105,33 +88,51 @@ void run_ble() {
 }
 
 void sleep() {
-  digitalWrite(ledPin, HIGH);
+  digitalWrite(LEDR, HIGH);
+  digitalWrite(LEDG, HIGH);
+  digitalWrite(LEDB, HIGH);
   while (true) {
     float gX = myIMU.readFloatGyroX();
-    float gY = myIMU.readFloatGyroY();
-    float gZ = myIMU.readFloatGyroZ();
-
-    float motionAmount = gX*gX + gY*gY + gZ*gZ;
-
-    if (motionAmount > wakeUpThreshold*wakeUpThreshold) {
+    if (abs(gX) > wakeUpThreshold) {
       return;
     }
-    delay(200);
+    delay(100);
   }
 }
 
 void setup() {
-  pinMode(ledPin, OUTPUT);
-  blink_error();
+  pinMode(LEDR, OUTPUT);
+  pinMode(LEDG, OUTPUT);
+  pinMode(LEDB, OUTPUT);
+  digitalWrite(LEDR, HIGH);
+  digitalWrite(LEDG, HIGH);
+  digitalWrite(LEDB, HIGH);
 }
+
+unsigned long wakeUpTime;
 
 void loop() {
   if (!start_ble()) {
+    BLE.end();
     blink_error();
     return;
   }
-  run_ble();
-  stop_ble();
+  digitalWrite(LEDB, LOW);
+  wakeUpTime = millis();
+  while (millis() - wakeUpTime < stayAwakeTime) {
+    BLEDevice central = BLE.central();
+    if (central) {
+      digitalWrite(LEDG, LOW);
+      digitalWrite(LEDB, HIGH);
+      run_ble(central);
+      digitalWrite(LEDG, HIGH);
+      digitalWrite(LEDB, LOW);
+      BLE.end();
+      digitalWrite(LEDB, HIGH);
+      return;
+    }
+  }
+  BLE.end();
   blink_error();
   sleep();
 }
