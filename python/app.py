@@ -155,7 +155,7 @@ class SensorDataSource(QtCore.QObject):
             except queue.Empty:
                 pass
 
-            while self._imu_queue.qsize() > 3:
+            while self._imu_queue.qsize() > 0:
                 accel, gyro, t = self._imu_queue.get()
                 self._filter.update_imu(accel, gyro)
                 position, orientation = self._filter.get_tip_pose()

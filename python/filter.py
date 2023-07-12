@@ -1,5 +1,5 @@
 from collections import deque
-from typing import Deque, Tuple
+from typing import Deque, Optional, Tuple
 import numpy as np
 from dataclasses import dataclass
 from numpy import typing as npt
@@ -22,6 +22,8 @@ class HistoryItem:
     updated_statecov: Mat
     predicted_state: Mat
     predicted_statecov: Mat
+    accel: Optional[Mat] = None
+    gyro: Optional[Mat] = None
 
 
 i_quat = [0, 1, 2, 3]
@@ -340,15 +342,30 @@ class DpointFilter:
             self.history.popleft()
         self.history.append(
             HistoryItem(
-                self.fs.state, self.fs.statecov, predicted.state, predicted.statecov
+                self.fs.state,
+                self.fs.statecov,
+                predicted.state,
+                predicted.statecov,
+                accel=accel,
+                gyro=gyro,
             )
         )
 
     def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray):
-        self.fs = fuse_camera(self.fs, imu_pos, orientation_mat)
         if len(self.history) == 0:
             return []
+        # Make sure we don't delay past the end of our history
+        camera_delay = min(len(self.history) - 1, 3) # IMU samples
 
+        # Rollback and store recent IMU measurements
+        replay: Deque[HistoryItem] = deque()
+        for _ in range(camera_delay):
+            replay.appendleft(self.history.pop())
+
+        # Fuse camera in its rightful place
+        h = self.history[-1]
+        fs = FilterState(h.updated_state, h.updated_statecov)
+        self.fs = fuse_camera(fs, imu_pos, orientation_mat)
         previous = self.history.pop()  # Replace last item
         self.history.append(
             HistoryItem(
@@ -358,8 +375,19 @@ class DpointFilter:
                 previous.predicted_statecov,
             )
         )
+
+        # Apply smoothing to the rest of the history
+        # TODO: We could also smooth the future measurements
         smoothed_estimates = ekf_smooth(list(self.history), self.dt)
-        return [get_tip_pose(state)[0] for state in smoothed_estimates]
+
+        # Replay the IMU measurements
+        predicted_estimates = []
+        for item in replay:
+            assert item.accel is not None
+            assert item.gyro is not None
+            self.update_imu(item.accel, item.gyro)
+            predicted_estimates.append(self.fs.state)
+        return [get_tip_pose(state)[0] for state in smoothed_estimates + predicted_estimates]
 
     def get_tip_pose(self) -> Tuple[Mat, Mat]:
         return get_tip_pose(self.fs.state)
