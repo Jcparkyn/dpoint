@@ -43,20 +43,21 @@ def rotateY(angle: float, point: np.ndarray) -> np.ndarray:
     return np.dot(rotation_matrix, point)
 
 
-markerLength = 0.015
-markerCorners = np.array(
-    [
-        [-markerLength / 2, markerLength / 2, 0],
-        [markerLength / 2, markerLength / 2, 0],
-        [markerLength / 2, -markerLength / 2, 0],
-        [-markerLength / 2, -markerLength / 2, 0],
-    ],
-    dtype=np.float32,
-)
+# markerLength = 0.015
+def getMarkerCorners(markerLength: float):
+    return np.array(
+        [
+            [-markerLength / 2, markerLength / 2, 0],
+            [markerLength / 2, markerLength / 2, 0],
+            [markerLength / 2, -markerLength / 2, 0],
+            [-markerLength / 2, -markerLength / 2, 0],
+        ],
+        dtype=np.float32,
+    )
 
 
-def getCornersPS(origin: np.ndarray, angleY: float) -> np.ndarray:
-    cornersWS = markerCorners + origin
+def getCornersPS(origin: np.ndarray, angleY: float, markerLength: float = 0.013) -> np.ndarray:
+    cornersWS = getMarkerCorners(markerLength) + origin
     rotated_corners = np.apply_along_axis(lambda x: rotateY(angleY, x), 1, cornersWS)
     return rotated_corners - IMU_OFFSET
 
@@ -78,14 +79,14 @@ def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarra
 
 
 markersOnPen = {
-    99: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
-    98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(135)),
-    97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
-    96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
-    95: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(90)),
+    99: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(135)),
+    98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
+    97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
+    96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
+    95: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(90)),
     94: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(180)),
-    93: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(270)),
-    92: getCornersPS(np.array([0, -0.0387, 0.01], dtype=np.float32), deg2rad(0)),
+    93: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(270)),
+    92: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(0)),
 }
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
@@ -283,9 +284,9 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 np.zeros(3), tip_to_imu_offset, rvec, tvec
             )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
-            cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, markerLength)
+            cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, 0.01)
             cv2.drawFrameAxes(
-                frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, markerLength
+                frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01
             )
             cv2.putText(
                 frame,
