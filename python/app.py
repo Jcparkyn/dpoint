@@ -139,7 +139,7 @@ class SensorDataSource(QtCore.QObject):
 
     def run_data_creation(self):
         print("Run data creation is starting")
-
+        samples_since_camera = 1000
         while True:
             if self._should_end:
                 print("Data source saw that it was told to stop")
@@ -149,9 +149,9 @@ class SensorDataSource(QtCore.QObject):
                 while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
                 camera_position, camera_orientation = self._tracker_queue.get_nowait()
-                tstart = time.time()
+                samples_since_camera = 0
                 smoothed_tip_pos = self._filter.update_camera(
-                    camera_position, camera_orientation
+                    camera_position.flatten(), camera_orientation
                 )
                 # print(f"Filter took {(time.time() - tstart)*1000} ms")
                 self.new_data.emit({"position_replace": smoothed_tip_pos})
@@ -160,6 +160,9 @@ class SensorDataSource(QtCore.QObject):
 
             while self._imu_queue.qsize() > 0:
                 accel, gyro, t = self._imu_queue.get()
+                samples_since_camera += 1
+                if samples_since_camera > 10:
+                    continue
                 self._filter.update_imu(accel, gyro)
                 position, orientation = self._filter.get_tip_pose()
                 self.new_data.emit(

@@ -46,11 +46,15 @@ camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 smoothing_length = 18
 
 
-def initial_state():
+def initial_state(position=None, orientation=None):
     state = np.zeros(STATE_SIZE, dtype=np.float64)
     state[i_quat] = [1, 0, 0, 0]
-    covdiag = np.ones(STATE_SIZE, dtype=np.float64) * 0.01
-    covdiag[i_accbias] = 1e-4
+    if position is not None:
+        state[i_pos] = position.flatten()
+    if orientation is not None:
+        state[i_quat] = orientation.flatten()
+    covdiag = np.ones(STATE_SIZE, dtype=np.float64) * 0.0001
+    covdiag[i_accbias] = 1e-2
     covdiag[i_gyrobias] = 1e-4
     statecov = np.diag(covdiag)
     return FilterState(state, statecov)
@@ -66,6 +70,21 @@ def get_tip_pose(state: Mat) -> Tuple[Mat, Mat]:
     return (tip_pos, orientation)
 
 
+def get_orientation_quat(orientation_mat_opencv: Mat):
+    return Quaternion(matrix=orientation_mat_opencv).normalised
+
+
+def nearest_quaternion(reference: Mat, new: Mat):
+    """
+    Find the sign for new that makes it as close to reference as possible.
+    Changing the sign of a quaternion does not change its rotation, but affects
+    the difference from the reference quaternion.
+    """
+    error1 = np.linalg.norm(reference - new)
+    error2 = np.linalg.norm(reference + new)
+    return (new, error1) if error1 < error2 else (-new, error2)
+
+
 class DpointFilter:
     history: Deque[HistoryItem]
 
@@ -76,9 +95,6 @@ class DpointFilter:
 
     def update_imu(self, accel: np.ndarray, gyro: np.ndarray):
         predicted = ekf_predict(self.fs, self.dt, Q)
-        if np.max(predicted.statecov) > 50 or np.max(abs(predicted.state)) > 50:
-            print("Resetting state")
-            predicted = initial_state()
         self.fs = fuse_imu(predicted, accel, gyro, imu_noise)
         if len(self.history) > smoothing_length:
             self.history.popleft()
@@ -107,7 +123,17 @@ class DpointFilter:
         # Fuse camera in its rightful place
         h = self.history[-1]
         fs = FilterState(h.updated_state, h.updated_statecov)
-        self.fs = fuse_camera(fs, imu_pos, orientation_mat, camera_noise)
+        or_quat = get_orientation_quat(orientation_mat)
+        or_quat_smoothed, or_error = nearest_quaternion(
+            fs.state[i_quat], or_quat.elements
+        )
+        pos_error = np.linalg.norm(imu_pos - fs.state[i_pos])
+        if pos_error > 0.2 or or_error > 0.3:
+            print(f"Resetting state, error: {pos_error + or_error}")
+            self.fs = initial_state(imu_pos, or_quat_smoothed)
+            self.history = deque()
+            return []
+        self.fs = fuse_camera(fs, imu_pos, or_quat_smoothed, camera_noise)
         previous = self.history.pop()  # Replace last item
         self.history.append(
             HistoryItem(
@@ -123,15 +149,17 @@ class DpointFilter:
         # Apply smoothing to the rest of the history
         # TODO: We could also smooth the future measurements
         smoothed_estimates = ekf_smooth(
-            List([
-                SmoothingHistoryItem(
-                    h.updated_state,
-                    h.updated_statecov,
-                    h.predicted_state,
-                    h.predicted_statecov,
-                )
-                for h in self.history
-            ]),
+            List(
+                [
+                    SmoothingHistoryItem(
+                        h.updated_state,
+                        h.updated_statecov,
+                        h.predicted_state,
+                        h.predicted_statecov,
+                    )
+                    for h in self.history
+                ]
+            ),
             self.dt,
         )
 

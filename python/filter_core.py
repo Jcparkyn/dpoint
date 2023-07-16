@@ -263,31 +263,14 @@ def fuse_imu(
     return FilterState(state, statecov)
 
 
-def get_orientation_quat(orientation_mat_opencv: Mat):
-    return Quaternion(matrix=orientation_mat_opencv).normalised
-
-
-def nearest_quaternion(reference: Mat, new: Mat):
-    """
-    Find the sign for new that makes it as close to reference as possible.
-    Changing the sign of a quaternion does not change its rotation, but affects
-    the difference from the reference quaternion.
-    """
-    error1 = np.linalg.norm(reference - new)
-    error2 = np.linalg.norm(reference + new)
-    return new if error1 < error2 else -new
-
-
 def fuse_camera(
     fs: FilterState,
     imu_pos: np.ndarray,
-    orientation_mat: np.ndarray,
+    orientation_quat: np.ndarray,
     meas_noise: np.ndarray,
 ):
     h, H = camera_measurement(fs.state)
-    or_quat = get_orientation_quat(orientation_mat)
-    or_quat_smoothed = nearest_quaternion(fs.state[i_quat], or_quat.elements)
-    z = np.concatenate((imu_pos.flatten(), or_quat_smoothed))  # actual measurement
+    z = np.concatenate((imu_pos.flatten(), orientation_quat))  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, meas_noise)
     state[i_quat] = repair_quaternion(state[i_quat])
     return FilterState(state, statecov)
