@@ -1,4 +1,5 @@
 import math
+import pickle
 import cv2
 from cv2 import aruco
 import numpy as np
@@ -88,6 +89,11 @@ markersOnPen = {
     93: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(270)),
     92: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(0)),
 }
+
+# with open("markersOnPenCalibrated.pkl", "rb") as f:
+#     markersOnPenCalibrated = pickle.load(f)
+
+markersOnPenCalibrated = markersOnPen
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
 arucoParams = aruco.DetectorParameters()
@@ -207,8 +213,8 @@ class MarkerTracker:
         if ids is not None:
             for i in range(ids.shape[0]):
                 id, cornersIS = (ids[i, 0], allCornersIS[i][0, :, :])
-                if id in markersOnPen:
-                    cornersPS = markersOnPen[id]
+                if id in markersOnPenCalibrated:
+                    cornersPS = markersOnPenCalibrated[id]
                     validMarkers.append((id, cornersPS, cornersIS))
 
         if len(validMarkers) < 1:
@@ -260,7 +266,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
 
         if keypress == ord("s"):
             focus = round(webcam.get(cv2.CAP_PROP_FOCUS))
-            filepath = f"calibration_pics/f{focus}/{round(time.time())}.jpg"
+            filepath = f"marker_calibration_pics/f{focus}/{round(time.time())}.jpg"
             success = cv2.imwrite(filepath, frame)
             print(f"save: {success}, {filepath}")
 
