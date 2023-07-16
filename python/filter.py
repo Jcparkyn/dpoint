@@ -29,9 +29,9 @@ Mat = npt.NDArray[np.float64]
 additive_noise = np.zeros(STATE_SIZE)
 additive_noise[i_pos] = 0
 additive_noise[i_vel] = 1e-4
-additive_noise[i_acc] = 100
+additive_noise[i_acc] = 200
 additive_noise[i_av] = 50
-additive_noise[i_quat] = 1e-4
+additive_noise[i_quat] = 2e-4
 additive_noise[i_accbias] = 1e-4
 additive_noise[i_gyrobias] = 2e-5
 Q = np.diag(additive_noise)
@@ -43,7 +43,7 @@ camera_noise_pos = 0.1e-5
 camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
-smoothing_length = 12
+smoothing_length = 18
 
 
 def initial_state():
