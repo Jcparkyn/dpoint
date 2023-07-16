@@ -3,6 +3,7 @@ from typing import Deque, Tuple
 import numpy as np
 from numpy import typing as npt
 from pyquaternion import Quaternion
+from numba.typed.typedlist import List
 
 from dimensions import IMU_OFFSET, STYLUS_LENGTH
 from filter_core import (
@@ -122,7 +123,7 @@ class DpointFilter:
         # Apply smoothing to the rest of the history
         # TODO: We could also smooth the future measurements
         smoothed_estimates = ekf_smooth(
-            [
+            List([
                 SmoothingHistoryItem(
                     h.updated_state,
                     h.updated_statecov,
@@ -130,7 +131,7 @@ class DpointFilter:
                     h.predicted_statecov,
                 )
                 for h in self.history
-            ],
+            ]),
             self.dt,
         )
 

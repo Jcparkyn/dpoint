@@ -214,16 +214,19 @@ def repair_quaternion(q: Mat):
     return q / np.linalg.norm(q)
 
 
+@njit(cache=True)
 def predict_cov_derivative(P: Mat, dfdx: Mat, Q: Mat):
     pDot = dfdx @ P + P @ (dfdx.T) + Q
     pDot = 0.5 * (pDot + pDot.T)
     return pDot
 
 
+@njit(cache=True)
 def euler_integrate(x: Mat, xdot: Mat, dt: float):
     return x + xdot * dt
 
 
+@njit(cache=True)
 def ekf_predict(fs: FilterState, dt: float, Q: np.ndarray):
     xdot = state_transition(fs.state)
     dfdx = state_transition_jacobian(fs.state)
