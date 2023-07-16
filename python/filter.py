@@ -1,23 +1,38 @@
 from collections import deque
-from typing import Deque, Optional, Tuple
+from typing import Deque, NamedTuple, Optional, Tuple
 import numpy as np
 from dataclasses import dataclass
 from numpy import typing as npt
 from pyquaternion import Quaternion
+from numba import jit, njit, float64
+from collections import namedtuple
 
 from dimensions import IMU_OFFSET, STYLUS_LENGTH
 
 Mat = npt.NDArray[np.float64]
 
 
-@dataclass
-class FilterState:
+# @dataclass
+class FilterState(NamedTuple):
     state: Mat
     statecov: Mat
 
+# FilterState = namedtuple("FilterState", ["state", "statecov"])
 
-@dataclass
-class HistoryItem:
+# @dataclass
+# class HistoryItem:
+#     updated_state: Mat
+#     updated_statecov: Mat
+#     predicted_state: Mat
+#     predicted_statecov: Mat
+
+class SmoothingHistoryItem(NamedTuple):
+    updated_state: Mat
+    updated_statecov: Mat
+    predicted_state: Mat
+    predicted_statecov: Mat
+
+class HistoryItem(NamedTuple):
     updated_state: Mat
     updated_statecov: Mat
     predicted_state: Mat
@@ -26,13 +41,13 @@ class HistoryItem:
     gyro: Optional[Mat] = None
 
 
-i_quat = [0, 1, 2, 3]
-i_av = [4, 5, 6]
-i_pos = [7, 8, 9]
-i_vel = [10, 11, 12]
-i_acc = [13, 14, 15]
-i_accbias = [16, 17, 18]
-i_gyrobias = [19, 20, 21]
+i_quat = np.array([0, 1, 2, 3])
+i_av = np.array([4, 5, 6])
+i_pos = np.array([7, 8, 9])
+i_vel = np.array([10, 11, 12])
+i_acc = np.array([13, 14, 15])
+i_accbias = np.array([16, 17, 18])
+i_gyrobias = np.array([19, 20, 21])
 
 additive_noise = np.zeros(22)
 additive_noise[i_pos] = 0
@@ -47,13 +62,13 @@ Q = np.diag(additive_noise)
 state_size = 22
 gravity_vector = np.array([0, 0, -9.81])
 accel_noise = 2e-3
-gyro_noise = 1e-5
+gyro_noise = 5e-4
 imu_noise = np.diag([accel_noise] * 3 + [gyro_noise] * 3)
 camera_noise_pos = 0.1e-5
 camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
-smoothing_length = 8
+smoothing_length = 12
 
 
 def initial_state():
@@ -65,8 +80,8 @@ def initial_state():
     statecov = np.diag(covdiag)
     return FilterState(state, statecov)
 
-
-def state_transition(state: Mat):
+@njit(cache=True)
+def state_transition(state: Mat = np.array([])):
     av = state[i_av]
     quat = state[i_quat]
     q0, q1, q2, q3 = quat
@@ -75,10 +90,10 @@ def state_transition(state: Mat):
 
     qdot = np.array(
         [
-            np.dot(av, [-q1, -q2, -q3]) / 2,
-            np.dot(av, [q0, -q3, q2]) / 2,
-            np.dot(av, [q3, q0, -q1]) / 2,
-            np.dot(av, [-q2, q1, q0]) / 2,
+            np.dot(av, np.array([-q1, -q2, -q3])) / 2,
+            np.dot(av, np.array([q0, -q3, q2])) / 2,
+            np.dot(av, np.array([q3, q0, -q1])) / 2,
+            np.dot(av, np.array([-q2, q1, q0])) / 2,
         ]
     )
     pdot = vel
@@ -93,7 +108,7 @@ def state_transition(state: Mat):
     statedot[i_gyrobias] = 0
     return statedot
 
-
+@njit(cache=True)
 def state_transition_jacobian(state: Mat):
     av = state[i_av]
     avx, avy, avz = av
@@ -131,7 +146,7 @@ def state_transition_jacobian(state: Mat):
     dfdx[i_vel, :] = dvelfuncdx
     return dfdx
 
-
+@njit(cache=True)
 def imu_measurement(state: Mat):
     av = state[i_av]
     acc = state[i_acc]
@@ -211,15 +226,16 @@ def imu_measurement(state: Mat):
     ]
     mj_accel[:, i_accbias] = np.eye(3)
 
-    m_combined = np.concatenate([m_accel, m_gyro])
-    mj_combined = np.vstack([mj_accel, mj_gyro])
+    m_combined = np.concatenate((m_accel, m_gyro))
+    mj_combined = np.vstack((mj_accel, mj_gyro))
     return (m_combined, mj_combined)
 
-
+@njit(cache=True)
 def camera_measurement(state: Mat):
     pos = state[i_pos]
     orientation = state[i_quat]
-    m_camera = np.concatenate([pos, orientation])
+    m_camera = np.concatenate((pos, orientation))
+    # m_camera = state[i_pos + i_quat]
     mj_camera = np.zeros((7, len(state)))
     mj_camera[0:3, i_pos] = np.eye(3)
     mj_camera[3:7, i_quat] = np.eye(4)
@@ -235,13 +251,13 @@ def predict_cov_derivative(P: Mat, dfdx: Mat, Q: Mat):
 def euler_integrate(x: Mat, xdot: Mat, dt: float):
     return x + xdot * dt
 
-
+@njit(cache=True)
 def repair_quaternion(q: Mat):
     if q[0] < 0:
         q = -q
     return q / np.linalg.norm(q)
 
-
+@njit(cache=True)
 def ekf_correct(x: Mat, P: Mat, h: Mat, H: Mat, z: Mat, R: Mat):
     S = H @ P @ H.T + R  # innovation covariance
     W = P @ H.T @ np.linalg.inv(S)
@@ -282,12 +298,12 @@ def nearest_quaternion(reference: Mat, new: Mat):
     error2 = np.linalg.norm(reference + new)
     return new if error1 < error2 else -new
 
-
+@njit(cache=True)
 def fuse_imu(fs: FilterState, accel: np.ndarray, gyro: np.ndarray):
     h, H = imu_measurement(fs.state)
     accel2 = np.array([-accel[2], accel[0], accel[1]])
     gyro2 = np.array([gyro[2], -gyro[0], -gyro[1]])
-    z = np.concatenate([accel2, gyro2])  # actual measurement
+    z = np.concatenate((accel2, gyro2))  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, imu_noise)
     state[i_quat] = repair_quaternion(state[i_quat])
     return FilterState(state, statecov)
@@ -297,17 +313,17 @@ def fuse_camera(fs: FilterState, imu_pos: np.ndarray, orientation_mat: np.ndarra
     h, H = camera_measurement(fs.state)
     or_quat = get_orientation_quat(orientation_mat)
     or_quat_smoothed = nearest_quaternion(fs.state[i_quat], or_quat.elements)
-    z = np.concatenate([imu_pos.flatten(), or_quat_smoothed])  # actual measurement
+    z = np.concatenate((imu_pos.flatten(), or_quat_smoothed))  # actual measurement
     state, statecov = ekf_correct(fs.state, fs.statecov, h, H, z, camera_noise)
     state[i_quat] = repair_quaternion(state[i_quat])
     return FilterState(state, statecov)
 
-
+@njit(cache=True)
 def ekf_smooth(history: list[HistoryItem], dt: float):
-    smoothed_state = [None] * len(history)
-    smoothed_state[-1] = history[-1].updated_state
+    # We only need the last item to be set, but we do all of them to make numba happy
+    smoothed_state = [h.updated_state for h in history]
 
-    for i in reversed(range(len(history) - 1)):
+    for i in range(len(history) - 2, -1, -1):
         h = history[i]
         F = np.eye(state_size) + state_transition_jacobian(h.updated_state) * dt
         A = h.updated_statecov @ F.T @ np.linalg.inv(history[i + 1].predicted_statecov)
@@ -355,7 +371,7 @@ class DpointFilter:
         if len(self.history) == 0:
             return []
         # Make sure we don't delay past the end of our history
-        camera_delay = min(len(self.history) - 1, 3) # IMU samples
+        camera_delay = min(len(self.history) - 1, 4) # IMU samples
 
         # Rollback and store recent IMU measurements
         replay: Deque[HistoryItem] = deque()
@@ -373,12 +389,19 @@ class DpointFilter:
                 self.fs.statecov,
                 previous.predicted_state,
                 previous.predicted_statecov,
+                # accel=previous.accel,
+                # gyro=previous.gyro,
             )
         )
 
         # Apply smoothing to the rest of the history
         # TODO: We could also smooth the future measurements
-        smoothed_estimates = ekf_smooth(list(self.history), self.dt)
+        smoothed_estimates = ekf_smooth([SmoothingHistoryItem(
+            h.updated_state,
+            h.updated_statecov,
+            h.predicted_state,
+            h.predicted_statecov,
+        ) for h in self.history], self.dt)
 
         # Replay the IMU measurements
         predicted_estimates = []

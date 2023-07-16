@@ -1,4 +1,5 @@
 # Parts of this file were scaffolded from https://github.com/vispy/vispy/blob/main/examples/scene/realtime_data/ex03b_data_sources_threaded_loop.py
+import time
 from PyQt6 import QtWidgets, QtCore
 
 import vispy
@@ -96,7 +97,7 @@ class CanvasWrapper:
             if len(position_replace) == 0:
                 return
             self.trail_line.pos[-len(position_replace) :, :] = position_replace
-            self.trail_line.set_data(self.trail_line.pos)
+            # self.trail_line.set_data(self.trail_line.pos)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -148,9 +149,11 @@ class SensorDataSource(QtCore.QObject):
                 while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
                 camera_position, camera_orientation = self._tracker_queue.get_nowait()
+                tstart = time.time()
                 smoothed_tip_pos = self._filter.update_camera(
                     camera_position, camera_orientation
                 )
+                # print(f"Filter took {(time.time() - tstart)*1000} ms")
                 self.new_data.emit({"position_replace": smoothed_tip_pos})
             except queue.Empty:
                 pass
