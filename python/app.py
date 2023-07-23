@@ -16,7 +16,7 @@ import multiprocessing as mp
 from filter import DpointFilter
 
 from marker_tracker import run_tracker
-from monitor_ble import monitor_ble
+from monitor_ble import StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
 NUM_LINE_POINTS = 400
@@ -35,7 +35,7 @@ def append_line_point(line: np.ndarray, new_point: np.array):
 
 
 def get_line_color(line: np.ndarray):
-    base_col = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+    base_col = np.array([[0.0, 0.0, 0.0]], dtype=np.float32)
     pos_z = line[:, [2]]
     return np.hstack(
         [
@@ -44,6 +44,14 @@ def get_line_color(line: np.ndarray):
         ]
     )
 
+def get_line_color_from_pressure(pressure: np.ndarray):
+    base_col = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+    return np.column_stack(
+        [
+            np.tile(base_col, (pressure.shape[0], 1)),
+            np.clip(pressure - 0.02, 0, 1),
+        ]
+    )
 
 class CanvasWrapper:
     def __init__(self):
@@ -71,9 +79,10 @@ class CanvasWrapper:
             vispy.util.transforms.scale([0.02, 0.02, 0.02])
         )
 
-        trail_data = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
+        self.line_data_pos = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
+        self.line_data_pressure = np.zeros(TRAIL_POINTS, dtype=np.float32)
         self.trail_line = visuals.Line(
-            pos=trail_data, color="red", width=2, parent=self.view_top.scene
+            pos=self.line_data_pos, color="red", width=2, parent=self.view_top.scene
         )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
@@ -85,19 +94,26 @@ class CanvasWrapper:
             orientation = new_data_dict["orientation"]
             orientation_quat = quaternion.Quaternion(*orientation).inverse()
             pos = new_data_dict["position"]
+            pressure = new_data_dict["pressure"]
             self.pen_mesh.transform.matrix = (
                 orientation_quat.get_matrix() @ vispy.util.transforms.translate(pos)
             )
-            self.trail_line.set_data(
-                append_line_point(self.trail_line.pos, pos),
-                color=get_line_color(self.trail_line.pos),
-            )
+            self.line_data_pos = append_line_point(self.line_data_pos, pos)
+            self.line_data_pressure = np.roll(self.line_data_pressure, -1)
+            self.line_data_pressure[-1] = pressure
+            self.refresh_line()
         elif "position_replace" in new_data_dict:
             position_replace: list[np.ndarray] = new_data_dict["position_replace"]
             if len(position_replace) == 0:
                 return
-            self.trail_line.pos[-len(position_replace) :, :] = position_replace
-            # self.trail_line.set_data(self.trail_line.pos)
+            self.line_data_pos[-len(position_replace) :, :] = position_replace
+    
+    def refresh_line(self):
+        self.trail_line.set_data(
+            self.line_data_pos,
+            color=get_line_color_from_pressure(self.line_data_pressure),
+        )
+
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -128,7 +144,7 @@ class SensorDataSource(QtCore.QObject):
     def __init__(
         self,
         tracker_queue: mp.Queue,
-        imu_queue: mp.Queue,
+        imu_queue: "mp.Queue[StylusReading]",
         parent=None,
     ):
         super().__init__(parent)
@@ -140,6 +156,9 @@ class SensorDataSource(QtCore.QObject):
     def run_data_creation(self):
         print("Run data creation is starting")
         samples_since_camera = 1000
+        pressure_baseline = 2000 / 2**16
+        pressure_avg_factor = 0.1
+        pressure_range = 1000 / 2**16
         while True:
             if self._should_end:
                 print("Data source saw that it was told to stop")
@@ -153,22 +172,26 @@ class SensorDataSource(QtCore.QObject):
                 smoothed_tip_pos = self._filter.update_camera(
                     camera_position.flatten(), camera_orientation
                 )
-                # print(f"Filter took {(time.time() - tstart)*1000} ms")
                 self.new_data.emit({"position_replace": smoothed_tip_pos})
             except queue.Empty:
                 pass
 
             while self._imu_queue.qsize() > 0:
-                accel, gyro, t = self._imu_queue.get()
+                reading = self._imu_queue.get()
                 samples_since_camera += 1
                 if samples_since_camera > 10:
                     continue
-                self._filter.update_imu(accel, gyro)
+                self._filter.update_imu(reading.accel, reading.gyro)
                 position, orientation = self._filter.get_tip_pose()
+                zpos = position[2]
+                if zpos > 0.07:
+                    # calibrate pressure baseline using current pressure reading
+                    pressure_baseline = pressure_baseline * (1 - pressure_avg_factor) + reading.pressure * pressure_avg_factor
                 self.new_data.emit(
                     {
                         "position": list(position),
                         "orientation": list(orientation),
+                        "pressure": (reading.pressure - pressure_baseline) / pressure_range,
                     }
                 )
 

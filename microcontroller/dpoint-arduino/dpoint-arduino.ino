@@ -1,5 +1,20 @@
 #include <LSM6DS3.h>
 #include <ArduinoBLE.h>
+#include "mbed.h"
+
+mbed::AnalogIn pressureIn(AIN4);
+analogin_config_t adcConfig = {
+    .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
+    .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
+    .gain       = NRF_SAADC_GAIN4,
+    .reference  = NRF_SAADC_REFERENCE_VDD4,
+    .acq_time   = NRF_SAADC_ACQTIME_10US,
+    .mode       = NRF_SAADC_MODE_DIFFERENTIAL,
+    .burst      = NRF_SAADC_BURST_ENABLED,
+    .pin_p      = NRF_SAADC_INPUT_AIN5,
+    .pin_n      = NRF_SAADC_INPUT_AIN4,
+};
+#define PRESSURE_SENSOR_VCC_PIN D1
 
 const unsigned long rate = 120; // samples per second
 const unsigned long delayMs = 1000/rate;
@@ -8,6 +23,7 @@ struct IMUDataPacket {
   float accel[3];
   float gyro[3];
   uint32_t time;
+  unsigned short pressure;
 };
 
 BLEService dpointService("19B10010-E8F2-537E-4F6C-D104768A1214");
@@ -16,6 +32,14 @@ BLEDescriptor imuDescriptor("2901", "IMU");
 BLETypedCharacteristic<IMUDataPacket> imuCharacteristic("19B10013-E8F2-537E-4F6C-D104768A1214", BLERead | BLENotify);
 
 LSM6DS3 myIMU(I2C_MODE, 0x6A); //I2C device address 0x6A
+
+void setupPressureSensor() {
+  pinMode(PRESSURE_SENSOR_VCC_PIN, OUTPUT);
+  digitalWrite(PRESSURE_SENSOR_VCC_PIN, HIGH);
+  nrf_saadc_oversample_set(NRF_SAADC_OVERSAMPLE_32X);
+  nrf_saadc_resolution_set(NRF_SAADC_RESOLUTION_12BIT);
+  pressureIn.configure(adcConfig);
+}
 
 void blink_error() {
   for (int i = 0; i < 11; i++) {
@@ -71,11 +95,13 @@ void run_ble(BLEDevice central) {
     float gX = myIMU.readFloatGyroX();
     float gY = myIMU.readFloatGyroY();
     float gZ = myIMU.readFloatGyroZ();
+    unsigned short pressure = pressureIn.read_u16();
     
     IMUDataPacket packet = {
       .accel = {aX, aY, aZ},
       .gyro = {gX, gY, gZ},
       .time = startTime,
+      .pressure = pressure,
     };
     imuCharacteristic.writeValue(packet);
 
@@ -87,13 +113,15 @@ void run_ble(BLEDevice central) {
   }
 }
 
-void sleep() {
+void sleep_stylus() {
   digitalWrite(LEDR, HIGH);
   digitalWrite(LEDG, HIGH);
   digitalWrite(LEDB, HIGH);
+  // digitalWrite(PRESSURE_SENSOR_VCC_PIN, LOW);
   while (true) {
     float gX = myIMU.readFloatGyroX();
     if (abs(gX) > wakeUpThreshold) {
+      // digitalWrite(PRESSURE_SENSOR_VCC_PIN, HIGH);
       return;
     }
     delay(100);
@@ -107,6 +135,8 @@ void setup() {
   digitalWrite(LEDR, HIGH);
   digitalWrite(LEDG, HIGH);
   digitalWrite(LEDB, HIGH);
+
+  setupPressureSensor();
 }
 
 unsigned long wakeUpTime;
@@ -134,5 +164,5 @@ void loop() {
   }
   BLE.end();
   blink_error();
-  sleep();
+  sleep_stylus();
 }
