@@ -173,7 +173,6 @@ class SensorDataSource(QtCore.QObject):
                 smoothed_tip_pos = self._filter.update_camera(
                     camera_position.flatten(), camera_orientation
                 )
-                print(f"Pressure baseline: {pressure_baseline}")
                 self.new_data.emit({"position_replace": smoothed_tip_pos})
             except queue.Empty:
                 pass
