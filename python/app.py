@@ -156,9 +156,10 @@ class SensorDataSource(QtCore.QObject):
     def run_data_creation(self):
         print("Run data creation is starting")
         samples_since_camera = 1000
-        pressure_baseline = 2000 / 2**16
-        pressure_avg_factor = 0.1
-        pressure_range = 1000 / 2**16
+        pressure_baseline = 0.017 # Approximate measured value for initial estimate
+        pressure_avg_factor = 0.1 # Factor for exponential moving average
+        pressure_range = 0.02
+        pressure_offset = 0.002 # Offset so that small positive numbers are treated as zero
         while True:
             if self._should_end:
                 print("Data source saw that it was told to stop")
@@ -172,6 +173,7 @@ class SensorDataSource(QtCore.QObject):
                 smoothed_tip_pos = self._filter.update_camera(
                     camera_position.flatten(), camera_orientation
                 )
+                print(f"Pressure baseline: {pressure_baseline}")
                 self.new_data.emit({"position_replace": smoothed_tip_pos})
             except queue.Empty:
                 pass
@@ -184,14 +186,14 @@ class SensorDataSource(QtCore.QObject):
                 self._filter.update_imu(reading.accel, reading.gyro)
                 position, orientation = self._filter.get_tip_pose()
                 zpos = position[2]
-                if zpos > 0.07:
+                if zpos > 0.007:
                     # calibrate pressure baseline using current pressure reading
                     pressure_baseline = pressure_baseline * (1 - pressure_avg_factor) + reading.pressure * pressure_avg_factor
                 self.new_data.emit(
                     {
                         "position": list(position),
                         "orientation": list(orientation),
-                        "pressure": (reading.pressure - pressure_baseline) / pressure_range,
+                        "pressure": (reading.pressure - pressure_baseline - pressure_offset) / pressure_range,
                     }
                 )
 
