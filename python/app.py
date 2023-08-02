@@ -1,5 +1,4 @@
 # Parts of this file were scaffolded from https://github.com/vispy/vispy/blob/main/examples/scene/realtime_data/ex03b_data_sources_threaded_loop.py
-import time
 from PyQt6 import QtWidgets, QtCore
 
 import vispy
@@ -137,7 +136,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return super().closeEvent(event)
 
 
-class SensorDataSource(QtCore.QObject):
+class QueueConsumer(QtCore.QObject):
     new_data = QtCore.pyqtSignal(dict)
     finished = QtCore.pyqtSignal()
 
@@ -153,8 +152,8 @@ class SensorDataSource(QtCore.QObject):
         self._imu_queue = imu_queue
         self._filter = DpointFilter(dt=1 / 120)
 
-    def run_data_creation(self):
-        print("Run data creation is starting")
+    def run_queue_consumer(self):
+        print("Queue consumer is starting")
         samples_since_camera = 1000
         pressure_baseline = 0.017 # Approximate measured value for initial estimate
         pressure_avg_factor = 0.1 # Factor for exponential moving average
@@ -196,7 +195,7 @@ class SensorDataSource(QtCore.QObject):
                     }
                 )
 
-        print("Data source finishing")
+        print("Queue consumer finishing")
         self.finished.emit()
 
     def stop_data(self):
@@ -224,38 +223,38 @@ if __name__ == "__main__":
     win.resize(*CANVAS_SIZE)
     data_thread = QtCore.QThread(parent=win)
     # camera_thread = QtCore.QThread(parent=win)
-    data_source = SensorDataSource(tracker_queue, imu_queue)
-    data_source.moveToThread(data_thread)
+    queue_consumer = QueueConsumer(tracker_queue, imu_queue)
+    queue_consumer.moveToThread(data_thread)
 
     camera_process = mp.Process(
         target=run_tracker_with_queue, args=(tracker_queue,), daemon=False
     )
     camera_process.start()
-    # imu_process = threading.Thread(target=monitor_ble, args=(imu_queue,), daemon=False)
-    imu_process = mp.Process(target=monitor_ble, args=(imu_queue,), daemon=False)
-    imu_process.start()
+
+    ble_process = mp.Process(target=monitor_ble, args=(imu_queue,), daemon=False)
+    ble_process.start()
 
     # update the visualization when there is new data
-    data_source.new_data.connect(canvas_wrapper.update_data)
+    queue_consumer.new_data.connect(canvas_wrapper.update_data)
     # start data generation when the thread is started
-    data_thread.started.connect(data_source.run_data_creation)
+    data_thread.started.connect(queue_consumer.run_queue_consumer)
     # camera_thread.started.connect(camera_data_source.run_data_creation)
     # if the data source finishes before the window is closed, kill the thread
-    data_source.finished.connect(
+    queue_consumer.finished.connect(
         data_thread.quit, QtCore.Qt.ConnectionType.DirectConnection
     )
     # if the window is closed, tell the data source to stop
     win.closing.connect(
-        data_source.stop_data, QtCore.Qt.ConnectionType.DirectConnection
+        queue_consumer.stop_data, QtCore.Qt.ConnectionType.DirectConnection
     )
     # when the thread has ended, delete the data source from memory
-    data_thread.finished.connect(data_source.deleteLater)
+    data_thread.finished.connect(queue_consumer.deleteLater)
 
     win.show()
     data_thread.start()
 
     app.run()
     camera_process.terminate()
-    imu_process.terminate()
+    ble_process.terminate()
     print("Waiting for data source to close gracefully...")
     data_thread.wait(500)
