@@ -15,7 +15,7 @@ import multiprocessing as mp
 from filter import DpointFilter
 
 from marker_tracker import run_tracker
-from monitor_ble import StylusReading, monitor_ble
+from monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
 NUM_LINE_POINTS = 400
@@ -43,6 +43,7 @@ def get_line_color(line: np.ndarray):
         ]
     )
 
+
 def get_line_color_from_pressure(pressure: np.ndarray):
     base_col = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
     return np.column_stack(
@@ -51,6 +52,7 @@ def get_line_color_from_pressure(pressure: np.ndarray):
             np.clip(pressure - 0.02, 0, 1),
         ]
     )
+
 
 class CanvasWrapper:
     def __init__(self):
@@ -106,13 +108,12 @@ class CanvasWrapper:
             if len(position_replace) == 0:
                 return
             self.line_data_pos[-len(position_replace) :, :] = position_replace
-    
+
     def refresh_line(self):
         self.trail_line.set_data(
             self.line_data_pos,
             color=get_line_color_from_pressure(self.line_data_pressure),
         )
-
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -155,10 +156,12 @@ class QueueConsumer(QtCore.QObject):
     def run_queue_consumer(self):
         print("Queue consumer is starting")
         samples_since_camera = 1000
-        pressure_baseline = 0.017 # Approximate measured value for initial estimate
-        pressure_avg_factor = 0.1 # Factor for exponential moving average
+        pressure_baseline = 0.017  # Approximate measured value for initial estimate
+        pressure_avg_factor = 0.1  # Factor for exponential moving average
         pressure_range = 0.02
-        pressure_offset = 0.002 # Offset so that small positive numbers are treated as zero
+        pressure_offset = (
+            0.002  # Offset so that small positive numbers are treated as zero
+        )
         while True:
             if self._should_end:
                 print("Data source saw that it was told to stop")
@@ -186,12 +189,18 @@ class QueueConsumer(QtCore.QObject):
                 zpos = position[2]
                 if zpos > 0.007:
                     # calibrate pressure baseline using current pressure reading
-                    pressure_baseline = pressure_baseline * (1 - pressure_avg_factor) + reading.pressure * pressure_avg_factor
+                    pressure_baseline = (
+                        pressure_baseline * (1 - pressure_avg_factor)
+                        + reading.pressure * pressure_avg_factor
+                    )
                 self.new_data.emit(
                     {
                         "position": list(position),
                         "orientation": list(orientation),
-                        "pressure": (reading.pressure - pressure_baseline - pressure_offset) / pressure_range,
+                        "pressure": (
+                            reading.pressure - pressure_baseline - pressure_offset
+                        )
+                        / pressure_range,
                     }
                 )
 
@@ -217,13 +226,14 @@ if __name__ == "__main__":
     app.create()
 
     tracker_queue = mp.Queue()
-    imu_queue = mp.Queue()
+    ble_queue = mp.Queue()
+    ble_command_queue = mp.Queue()
     canvas_wrapper = CanvasWrapper()
     win = MainWindow(canvas_wrapper)
     win.resize(*CANVAS_SIZE)
     data_thread = QtCore.QThread(parent=win)
-    # camera_thread = QtCore.QThread(parent=win)
-    queue_consumer = QueueConsumer(tracker_queue, imu_queue)
+
+    queue_consumer = QueueConsumer(tracker_queue, ble_queue)
     queue_consumer.moveToThread(data_thread)
 
     camera_process = mp.Process(
@@ -231,14 +241,15 @@ if __name__ == "__main__":
     )
     camera_process.start()
 
-    ble_process = mp.Process(target=monitor_ble, args=(imu_queue,), daemon=False)
+    ble_process = mp.Process(
+        target=monitor_ble, args=(ble_queue, ble_command_queue), daemon=False
+    )
     ble_process.start()
 
     # update the visualization when there is new data
     queue_consumer.new_data.connect(canvas_wrapper.update_data)
     # start data generation when the thread is started
     data_thread.started.connect(queue_consumer.run_queue_consumer)
-    # camera_thread.started.connect(camera_data_source.run_data_creation)
     # if the data source finishes before the window is closed, kill the thread
     queue_consumer.finished.connect(
         data_thread.quit, QtCore.Qt.ConnectionType.DirectConnection
@@ -246,6 +257,10 @@ if __name__ == "__main__":
     # if the window is closed, tell the data source to stop
     win.closing.connect(
         queue_consumer.stop_data, QtCore.Qt.ConnectionType.DirectConnection
+    )
+    win.closing.connect(
+        lambda: ble_command_queue.put(StopCommand()),
+        QtCore.Qt.ConnectionType.DirectConnection,
     )
     # when the thread has ended, delete the data source from memory
     data_thread.finished.connect(queue_consumer.deleteLater)
@@ -257,4 +272,4 @@ if __name__ == "__main__":
     camera_process.terminate()
     ble_process.terminate()
     print("Waiting for data source to close gracefully...")
-    data_thread.wait(500)
+    data_thread.wait(1000)

@@ -13,6 +13,10 @@ class StylusReading(NamedTuple):
     t: int
     pressure: float
 
+class StopCommand(NamedTuple):
+    pass
+
+
 def unpack_imu_data_packet(data: bytearray):
     """Unpacks an IMUDataPacket struct from the given data buffer."""
     ax, ay, az, gx, gy, gz, t, pressure = struct.unpack("<6fIHxx", data)
@@ -21,7 +25,7 @@ def unpack_imu_data_packet(data: bytearray):
     return StylusReading(accel, gyro, t, pressure / 2**16)
 
 
-async def monitor_ble_async(queue: mp.Queue):
+async def monitor_ble_async(data_queue: mp.Queue, command_queue: mp.Queue):
     device = await BleakScanner.find_device_by_name("DPOINT")
     if device is None:
         print("could not find device with name DPOINT")
@@ -32,16 +36,17 @@ async def monitor_ble_async(queue: mp.Queue):
         characteristic: BleakGATTCharacteristic, data: bytearray
     ):
         reading = unpack_imu_data_packet(data)
-        queue.put(reading)
+        data_queue.put(reading)
 
     disconnected_event = asyncio.Event()
     async with BleakClient(
         device, disconnected_callback=lambda _: disconnected_event.set()
     ) as client:
         await client.start_notify(characteristic, queue_notification_handler)
-        await disconnected_event.wait()
+        command = asyncio.to_thread(lambda: command_queue.get())
+        await asyncio.wait([disconnected_event.wait(), command], return_when=asyncio.FIRST_COMPLETED)
         print("Disconnected from BLE")
 
 
-def monitor_ble(queue: mp.Queue):
-    asyncio.run(monitor_ble_async(queue))
+def monitor_ble(data_queue: mp.Queue, command_queue: mp.Queue):
+    asyncio.run(monitor_ble_async(data_queue, command_queue))
