@@ -2,11 +2,16 @@ import math
 import cv2
 from cv2 import aruco
 import numpy as np
-from typing import Tuple, Callable, Optional
+from typing import NamedTuple, Tuple, Callable, Optional
 import time
 import sys
 
 from dimensions import IMU_OFFSET, STYLUS_LENGTH
+
+
+class CameraReading(NamedTuple):
+    position: np.ndarray
+    orientation_mat: np.ndarray
 
 
 def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -56,7 +61,9 @@ def getMarkerCorners(markerLength: float):
     )
 
 
-def getCornersPS(origin: np.ndarray, angleY: float, markerLength: float = 0.013) -> np.ndarray:
+def getCornersPS(
+    origin: np.ndarray, angleY: float, markerLength: float = 0.013
+) -> np.ndarray:
     cornersWS = getMarkerCorners(markerLength) + origin
     rotated_corners = np.apply_along_axis(lambda x: rotateY(angleY, x), 1, cornersWS)
     return rotated_corners - IMU_OFFSET
@@ -285,9 +292,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, 0.01)
-            cv2.drawFrameAxes(
-                frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01
-            )
+            cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01)
             cv2.putText(
                 frame,
                 f"IMU: [{array_to_str(tvecRelative*100)}]cm",
@@ -297,7 +302,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 (0, 255, 0),
             )
             if on_estimate is not None:
-                on_estimate(Rrelative, tvecRelative)
+                on_estimate(CameraReading(tvecRelative, Rrelative))
 
         frameEndTime = time.perf_counter()
         fps = 1 / (frameEndTime - frameStartTime)

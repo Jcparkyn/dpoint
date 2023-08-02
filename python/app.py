@@ -14,7 +14,7 @@ import queue
 import multiprocessing as mp
 from filter import DpointFilter
 
-from marker_tracker import run_tracker
+from marker_tracker import CameraReading, run_tracker
 from monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
@@ -143,7 +143,7 @@ class QueueConsumer(QtCore.QObject):
 
     def __init__(
         self,
-        tracker_queue: mp.Queue,
+        tracker_queue: "mp.Queue[CameraReading]",
         imu_queue: "mp.Queue[StylusReading]",
         parent=None,
     ):
@@ -214,7 +214,7 @@ class QueueConsumer(QtCore.QObject):
 
 def run_tracker_with_queue(queue: mp.Queue):
     run_tracker(
-        lambda orientation, position: queue.put((position, orientation), block=False)
+        lambda reading: queue.put(reading, block=False)
     )
 
 
