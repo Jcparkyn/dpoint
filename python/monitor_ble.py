@@ -43,8 +43,9 @@ async def monitor_ble_async(data_queue: mp.Queue, command_queue: mp.Queue):
         device, disconnected_callback=lambda _: disconnected_event.set()
     ) as client:
         await client.start_notify(characteristic, queue_notification_handler)
-        command = asyncio.to_thread(lambda: command_queue.get())
-        await asyncio.wait([disconnected_event.wait(), command], return_when=asyncio.FIRST_COMPLETED)
+        command = asyncio.create_task(asyncio.to_thread(lambda: command_queue.get()))
+        disconnected_task = asyncio.create_task(disconnected_event.wait())
+        await asyncio.wait([disconnected_task, command], return_when=asyncio.FIRST_COMPLETED)
         print("Disconnected from BLE")
 
 
