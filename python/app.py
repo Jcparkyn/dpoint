@@ -44,8 +44,8 @@ def get_line_color(line: np.ndarray):
     )
 
 
-def get_line_color_from_pressure(pressure: np.ndarray):
-    base_col = np.array([[1.0, 0.0, 0.0]], dtype=np.float32)
+def get_line_color_from_pressure(pressure: np.ndarray, color = (0, 0, 0)):
+    base_col = np.array(color, dtype=np.float32)
     return np.column_stack(
         [
             np.tile(base_col, (pressure.shape[0], 1)),
