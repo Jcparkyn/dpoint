@@ -7,3 +7,5 @@ __pycache__
 *.received.txt
 
 !pen.obj
+
+recordings/**/*.jpg
