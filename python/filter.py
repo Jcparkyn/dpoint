@@ -109,7 +109,7 @@ class DpointFilter:
             )
         )
 
-    def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray):
+    def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray) -> list[np.ndarray]:
         if len(self.history) == 0:
             return []
         # Make sure we don't delay past the end of our history

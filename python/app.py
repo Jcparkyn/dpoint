@@ -170,10 +170,10 @@ class QueueConsumer(QtCore.QObject):
             try:
                 while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
-                camera_position, camera_orientation = self._tracker_queue.get_nowait()
+                reading = self._tracker_queue.get_nowait()
                 samples_since_camera = 0
                 smoothed_tip_pos = self._filter.update_camera(
-                    camera_position.flatten(), camera_orientation
+                    reading.position.flatten(), reading.orientation_mat
                 )
                 self.new_data.emit({"position_replace": smoothed_tip_pos})
             except queue.Empty:
@@ -213,9 +213,7 @@ class QueueConsumer(QtCore.QObject):
 
 
 def run_tracker_with_queue(queue: mp.Queue):
-    run_tracker(
-        lambda reading: queue.put(reading, block=False)
-    )
+    run_tracker(lambda reading: queue.put(reading, block=False))
 
 
 if __name__ == "__main__":
