@@ -1,10 +1,15 @@
 # Parts of this file were scaffolded from https://github.com/vispy/vispy/blob/main/examples/scene/realtime_data/ex03b_data_sources_threaded_loop.py
+import datetime
+from pathlib import Path
+import pickle
+import time
 from PyQt6 import QtWidgets, QtCore
 
 import vispy
 from vispy import scene
 from vispy.io import read_mesh
 from vispy.scene import SceneCanvas, visuals
+import vispy.app
 from vispy.app import use_app
 from vispy.util import quaternion
 from vispy.visuals import transforms
@@ -25,6 +30,9 @@ COLORMAP_CHOICES = ["viridis", "reds", "blues"]
 LINE_COLOR_CHOICES = ["black", "red", "blue"]
 stylus_len = 0.143
 
+recording_enabled = False
+app_start_datetime = datetime.datetime.now()
+
 
 def append_line_point(line: np.ndarray, new_point: np.array):
     """Append new points to a line."""
@@ -44,7 +52,7 @@ def get_line_color(line: np.ndarray):
     )
 
 
-def get_line_color_from_pressure(pressure: np.ndarray, color = (0, 0, 0)):
+def get_line_color_from_pressure(pressure: np.ndarray, color=(0, 0, 0)):
     base_col = np.array(color, dtype=np.float32)
     return np.column_stack(
         [
@@ -58,6 +66,7 @@ class CanvasWrapper:
     def __init__(self):
         self.canvas = SceneCanvas(size=CANVAS_SIZE, keys="interactive")
         self.canvas.measure_fps()
+        self.canvas.connect(self.on_key_press)
         self.grid = self.canvas.central_widget.add_grid()
 
         self.view_top = self.grid.add_view(0, 0, bgcolor="grey")
@@ -115,6 +124,16 @@ class CanvasWrapper:
             color=get_line_color_from_pressure(self.line_data_pressure),
         )
 
+    def on_key_press(self, e: vispy.app.canvas.KeyEvent):
+        global recording_enabled
+        if e.key == "R":
+            if "Control" in e.modifiers:
+                recording_enabled = True
+                print("Recording enabled")
+            else:
+                recording_enabled = False
+                print("Recording disabled")
+
 
 class MainWindow(QtWidgets.QMainWindow):
     closing = QtCore.pyqtSignal()
@@ -152,6 +171,7 @@ class QueueConsumer(QtCore.QObject):
         self._tracker_queue = tracker_queue
         self._imu_queue = imu_queue
         self._filter = DpointFilter(dt=1 / 120)
+        self._recorded_data = []
 
     def run_queue_consumer(self):
         print("Queue consumer is starting")
@@ -171,6 +191,8 @@ class QueueConsumer(QtCore.QObject):
                 while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
                 reading = self._tracker_queue.get_nowait()
+                if recording_enabled:
+                    self._recorded_data.append((time.time(), reading))
                 samples_since_camera = 0
                 smoothed_tip_pos = self._filter.update_camera(
                     reading.position.flatten(), reading.orientation_mat
@@ -184,6 +206,8 @@ class QueueConsumer(QtCore.QObject):
                 samples_since_camera += 1
                 if samples_since_camera > 10:
                     continue
+                if recording_enabled:
+                    self._recorded_data.append((time.time(), reading))
                 self._filter.update_imu(reading.accel, reading.gyro)
                 position, orientation = self._filter.get_tip_pose()
                 zpos = position[2]
@@ -205,6 +229,14 @@ class QueueConsumer(QtCore.QObject):
                 )
 
         print("Queue consumer finishing")
+
+        if self._recorded_data:
+            timestamp = app_start_datetime.strftime("%Y%m%d_%H%M%S")
+            file = Path(f"recordings/{timestamp}/recorded_data.pickle")
+            file.parent.mkdir(parents=True, exist_ok=True)
+            with file.open("xb") as f:
+                pickle.dump(self._recorded_data, f)
+
         self.finished.emit()
 
     def stop_data(self):
@@ -263,11 +295,12 @@ if __name__ == "__main__":
     # when the thread has ended, delete the data source from memory
     data_thread.finished.connect(queue_consumer.deleteLater)
 
-    win.show()
-    data_thread.start()
-
-    app.run()
-    camera_process.terminate()
-    ble_process.terminate()
+    try:
+        win.show()
+        data_thread.start()
+        app.run()
+    finally:
+        camera_process.terminate()
+        ble_process.terminate()
     print("Waiting for data source to close gracefully...")
     data_thread.wait(1000)
