@@ -62,7 +62,7 @@ def getMarkerCorners(markerLength: float):
 
 
 def getCornersPS(
-    origin: np.ndarray, angleY: float, markerLength: float = 0.013
+    origin: np.ndarray, angleY: float, markerLength: float = 0.013*0.97
 ) -> np.ndarray:
     cornersWS = getMarkerCorners(markerLength) + origin
     rotated_corners = np.apply_along_axis(lambda x: rotateY(angleY, x), 1, cornersWS)
@@ -90,10 +90,10 @@ markersOnPen = {
     98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
     97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
     96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
-    95: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(90)),
-    94: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(180)),
-    93: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(270)),
-    92: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(0)),
+    95: getCornersPS(np.array([0, -0.0393, 0.01], dtype=np.float32), deg2rad(90)),
+    94: getCornersPS(np.array([0, -0.0390, 0.01], dtype=np.float32), deg2rad(180)),
+    93: getCornersPS(np.array([0, -0.0393, 0.01], dtype=np.float32), deg2rad(270)),
+    92: getCornersPS(np.array([0, -0.0390, 0.01], dtype=np.float32), deg2rad(0)),
 }
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
@@ -183,6 +183,7 @@ def solve_pnp(
         reprojectionError = vector_rms(projectedImagePoints - imagePoints, axis=1)
 
         if reprojectionError < reprojectionErrorThreshold:
+            # print(f"Reprojection error: {reprojectionError}")
             return (True, rvec, tvec)
         else:
             print(f"Reprojection error too high: {reprojectionError}")
