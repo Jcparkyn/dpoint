@@ -1,4 +1,8 @@
 import pickle
+from matplotlib import pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
 
 import numpy as np
 from app import get_line_color_from_pressure
@@ -12,6 +16,7 @@ from vispy.plot import PlotWidget
 from PIL import Image
 import cv2 as cv
 from scipy.spatial import KDTree
+import seaborn as sns
 
 INCH_TO_METRE = 0.0254
 
@@ -54,7 +59,7 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
 
     pressure_baseline = 0.017  # Approximate measured value for initial estimate
     pressure_range = 0.02
-    pressure_offset = 0.002  # Offset so that small positive numbers are treated as zero
+    pressure_offset = 0.003  # Offset so that small positive numbers are treated as zero
     sample = 0
     for t, reading in recorded_data:
         match reading:
@@ -76,12 +81,6 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
     return tip_pos_predicted, tip_pos_smoothed, pressure
 
 
-def chamfer_distance(a: np.ndarray, b: np.ndarray):
-    tree = KDTree(a)
-    dist, indices = tree.query(b)
-    return dist
-
-
 def minimise_chamfer_distance(a: np.ndarray, b: np.ndarray, iterations=3):
     """Finds the optimal translation of b to minimise the chamfer distance to a."""
     tree = KDTree(a)
@@ -92,7 +91,8 @@ def minimise_chamfer_distance(a: np.ndarray, b: np.ndarray, iterations=3):
         error = np.mean(errors, axis=0)
         offset += error
         # print(f"Iteration {i}, offset: {offset}, error: {error}")
-    return offset
+    dist, _ = tree.query(b + offset)
+    return offset, dist
 
 
 def resample_line(points, pressure, desired_distance):
@@ -132,9 +132,6 @@ if __name__ == "__main__":
     tip_pos_smoothed = tip_pos_smoothed[s0:s1, :]
     pressure = pressure[s0:s1]
 
-    fig = vp.Fig(size=(800, 800), show=False)
-    ax: PlotWidget = fig[0, 0]
-
     scan_img = Image.open("./recordings/20230816_170100/scan.jpg")
     scan_dpi, _ = scan_img.info.get("dpi")
     scan_x, scan_y = get_black_points(np.asarray(scan_img), scan_dpi)
@@ -144,26 +141,64 @@ if __name__ == "__main__":
         tip_pos_smoothed[:, :2], pressure, 0.001 * 0.5
     )
     tps_black = tps_resampled[pressure_resampled > 0.1, :]
-    offset = minimise_chamfer_distance(scan_points, tps_black, iterations=3)
+    offset, dist = minimise_chamfer_distance(scan_points, tps_black, iterations=3)
     offset3d = np.append(offset, 0)
 
-    ax.plot(
-        tip_pos_predicted + offset3d,
-        marker_size=0,
-        color=get_line_color_from_pressure(pressure, (0.7, 0.2, 0.2)),
-    )
-    ax.plot(
-        tip_pos_smoothed + offset3d,
-        marker_size=0,
-        width=2,
-        color=get_line_color_from_pressure(pressure, (0, 0, 0)),
-    )
-    ax.view.camera.aspect = 1
-
-    ax.plot(scan_points, marker_size=1, width=0, edge_color=(0, 0, 1, 0.2))
-    # ax.plot(tps_black + offset, marker_size=1, color=(0, 1, 0), width=0)
-
-    dist = chamfer_distance(scan_points, tps_black + offset)
     print(f"Chamfer distance: {np.mean(dist)*1000:0.4f}mm")
 
-    fig.show(run=True)
+    ax: Axes = sns.scatterplot(
+        x=scan_points[:, 0] * 1000,
+        y=scan_points[:, 1] * 1000,
+        color=(0.8, 0.8, 1),
+        size=0.05,
+        alpha=0.8,
+    )
+    ax.set_aspect("equal")
+    ax.set(xlabel="x (mm)", ylabel="y (mm)")
+    scan_handle = ax.collections[0]
+
+    def line_to_linecollection(xy, pressure, width, color):
+        x, y = xy[:, 0], xy[:, 1]
+        segments = np.array([x[:-1], y[:-1], x[1:], y[1:]]).T.reshape(-1, 2, 2)
+        lc = LineCollection(segments)
+        lc.set_linewidth(pressure * width)
+        lc.set_alpha(np.sqrt(np.clip(pressure, 0, 1)))
+        lc.set_color(color)
+        proxy = Line2D([0, 1], [0, 1], color=color, lw=width, solid_capstyle="round")
+        return lc, proxy
+
+    lc1, lc1_proxy = line_to_linecollection(
+        (tip_pos_predicted + offset3d) * 1000, pressure, 1.5, color=(0.7, 0.2, 0.2)
+    )
+    ax.add_collection(lc1)
+    lc2, lc2_proxy = line_to_linecollection(
+        (tip_pos_smoothed + offset3d) * 1000, pressure, 3, color="black"
+    )
+    ax.add_collection(lc2)
+    ax.legend(
+        [scan_handle, lc1_proxy, lc2_proxy],
+        ["Scan", "Predicted stroke", "Smoothed stroke"],
+        loc="upper right",
+    )
+
+    plt.show()
+
+    # fig = vp.Fig(size=(800, 800), show=False)
+    # ax: PlotWidget = fig[0, 0]
+    # ax.plot(
+    #     tip_pos_predicted + offset3d,
+    #     marker_size=0,
+    #     color=get_line_color_from_pressure(pressure, (0.7, 0.2, 0.2)),
+    # )
+    # ax.plot(
+    #     tip_pos_smoothed + offset3d,
+    #     marker_size=0,
+    #     width=2,
+    #     color=get_line_color_from_pressure(pressure, (0, 0, 0)),
+    # )
+    # ax.view.camera.aspect = 1
+
+    # ax.plot(scan_points, marker_size=1, width=0, edge_color=(0, 0, 1, 0.2))
+    # # ax.plot(tps_black + offset, marker_size=1, color=(0, 1, 0), width=0)
+
+    # fig.show(run=True)
