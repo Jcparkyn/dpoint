@@ -3,11 +3,16 @@ import pickle
 import cv2
 from cv2 import aruco
 import numpy as np
-from typing import Tuple, Callable, Optional
+from typing import NamedTuple, Tuple, Callable, Optional
 import time
 import sys
 
 from dimensions import IMU_OFFSET, STYLUS_LENGTH
+
+
+class CameraReading(NamedTuple):
+    position: np.ndarray
+    orientation_mat: np.ndarray
 
 
 def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
@@ -57,7 +62,9 @@ def getMarkerCorners(markerLength: float):
     )
 
 
-def getCornersPS(origin: np.ndarray, angleY: float, markerLength: float = 0.013) -> np.ndarray:
+def getCornersPS(
+    origin: np.ndarray, angleY: float, markerLength: float = 0.013*0.97
+) -> np.ndarray:
     cornersWS = getMarkerCorners(markerLength) + origin
     rotated_corners = np.apply_along_axis(lambda x: rotateY(angleY, x), 1, cornersWS)
     return rotated_corners - IMU_OFFSET
@@ -84,10 +91,10 @@ markersOnPen = {
     98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
     97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
     96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
-    95: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(90)),
-    94: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(180)),
-    93: getCornersPS(np.array([0, -0.0394, 0.01], dtype=np.float32), deg2rad(270)),
-    92: getCornersPS(np.array([0, -0.039, 0.01], dtype=np.float32), deg2rad(0)),
+    95: getCornersPS(np.array([0, -0.0393, 0.01], dtype=np.float32), deg2rad(90)),
+    94: getCornersPS(np.array([0, -0.0390, 0.01], dtype=np.float32), deg2rad(180)),
+    93: getCornersPS(np.array([0, -0.0393, 0.01], dtype=np.float32), deg2rad(270)),
+    92: getCornersPS(np.array([0, -0.0390, 0.01], dtype=np.float32), deg2rad(0)),
 }
 
 # with open("markersOnPenCalibrated.pkl", "rb") as f:
@@ -182,6 +189,7 @@ def solve_pnp(
         reprojectionError = vector_rms(projectedImagePoints - imagePoints, axis=1)
 
         if reprojectionError < reprojectionErrorThreshold:
+            # print(f"Reprojection error: {reprojectionError}")
             return (True, rvec, tvec)
         else:
             print(f"Reprojection error too high: {reprojectionError}")
@@ -291,9 +299,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, 0.01)
-            cv2.drawFrameAxes(
-                frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01
-            )
+            cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01)
             cv2.putText(
                 frame,
                 f"IMU: [{array_to_str(tvecRelative*100)}]cm",
@@ -303,7 +309,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 (0, 255, 0),
             )
             if on_estimate is not None:
-                on_estimate(Rrelative, tvecRelative)
+                on_estimate(CameraReading(tvecRelative, Rrelative))
 
         frameEndTime = time.perf_counter()
         fps = 1 / (frameEndTime - frameStartTime)
