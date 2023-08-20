@@ -91,8 +91,10 @@ class CanvasWrapper:
 
         self.line_data_pos = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
         self.line_data_pressure = np.zeros(TRAIL_POINTS, dtype=np.float32)
+        # agg looks much better than gl, but only works with 2D data.
         self.trail_line = visuals.Line(
-            pos=self.line_data_pos, color="red", width=2, parent=self.view_top.scene
+            pos=self.line_data_pos[:,0:2], color="red", width=2, parent=self.view_top.scene,
+            method="agg"
         )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
@@ -111,16 +113,17 @@ class CanvasWrapper:
             self.line_data_pos = append_line_point(self.line_data_pos, pos)
             self.line_data_pressure = np.roll(self.line_data_pressure, -1)
             self.line_data_pressure[-1] = pressure
-            self.refresh_line()
+            # self.refresh_line()
         elif "position_replace" in new_data_dict:
             position_replace: list[np.ndarray] = new_data_dict["position_replace"]
             if len(position_replace) == 0:
                 return
             self.line_data_pos[-len(position_replace) :, :] = position_replace
+            self.refresh_line()
 
     def refresh_line(self):
         self.trail_line.set_data(
-            self.line_data_pos,
+            self.line_data_pos[:,0:2],
             color=get_line_color_from_pressure(self.line_data_pressure),
         )
 
