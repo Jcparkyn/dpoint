@@ -23,12 +23,8 @@ from marker_tracker import CameraReading, run_tracker
 from monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
-NUM_LINE_POINTS = 400
 TRAIL_POINTS = 1000
-
-COLORMAP_CHOICES = ["viridis", "reds", "blues"]
-LINE_COLOR_CHOICES = ["black", "red", "blue"]
-stylus_len = 0.143
+USE_3D_LINE = False # If true, uses a lower quality GL line renderer that supports 3D lines
 
 recording_enabled = False
 app_start_datetime = datetime.datetime.now()
@@ -92,10 +88,16 @@ class CanvasWrapper:
         self.line_data_pos = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
         self.line_data_pressure = np.zeros(TRAIL_POINTS, dtype=np.float32)
         # agg looks much better than gl, but only works with 2D data.
-        self.trail_line = visuals.Line(
-            pos=self.line_data_pos[:,0:2], color="red", width=2, parent=self.view_top.scene,
-            method="agg"
-        )
+        if USE_3D_LINE:
+            self.trail_line = visuals.Line(
+                pos=self.line_data_pos, color="black", width=1, parent=self.view_top.scene,
+                method="gl"
+            )
+        else:
+            self.trail_line = visuals.Line(
+                pos=self.line_data_pos[:,0:2], color="black", width=2, parent=self.view_top.scene,
+                method="agg"
+            )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
         # This is broken for now, see https://github.com/vispy/vispy/issues/2363
@@ -123,7 +125,7 @@ class CanvasWrapper:
 
     def refresh_line(self):
         self.trail_line.set_data(
-            self.line_data_pos[:,0:2],
+            self.line_data_pos if USE_3D_LINE else self.line_data_pos[:,0:2],
             color=get_line_color_from_pressure(self.line_data_pressure),
         )
 
