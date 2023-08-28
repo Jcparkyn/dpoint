@@ -1,4 +1,6 @@
 import math
+import os
+import pickle
 import cv2
 from cv2 import aruco
 import numpy as np
@@ -6,7 +8,7 @@ from typing import NamedTuple, Tuple, Callable, Optional
 import time
 import sys
 
-from dimensions import IMU_OFFSET, STYLUS_LENGTH
+from dimensions import IMU_OFFSET, STYLUS_LENGTH, idealMarkerPositions
 
 
 class CameraReading(NamedTuple):
@@ -42,37 +44,6 @@ def getWebcam():
     return webcam
 
 
-def rotateY(angle: float, point: np.ndarray) -> np.ndarray:
-    c, s = np.cos(angle), np.sin(angle)
-    rotation_matrix = np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=np.float32)
-    return np.dot(rotation_matrix, point)
-
-
-# markerLength = 0.015
-def getMarkerCorners(markerLength: float):
-    return np.array(
-        [
-            [-markerLength / 2, markerLength / 2, 0],
-            [markerLength / 2, markerLength / 2, 0],
-            [markerLength / 2, -markerLength / 2, 0],
-            [-markerLength / 2, -markerLength / 2, 0],
-        ],
-        dtype=np.float32,
-    )
-
-
-def getCornersPS(
-    origin: np.ndarray, angleY: float, markerLength: float = 0.013*0.97
-) -> np.ndarray:
-    cornersWS = getMarkerCorners(markerLength) + origin
-    rotated_corners = np.apply_along_axis(lambda x: rotateY(angleY, x), 1, cornersWS)
-    return rotated_corners - IMU_OFFSET
-
-
-def deg2rad(deg: float) -> float:
-    return deg * np.pi / 180
-
-
 def inverseRT(rvec, tvec) -> Tuple[np.ndarray, np.ndarray]:
     R, _ = cv2.Rodrigues(rvec)
     Rt = np.transpose(R)
@@ -85,28 +56,22 @@ def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarra
     return (rvec, tvec)
 
 
-markersOnPen = {
-    99: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(135)),
-    98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
-    97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
-    96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
-    95: getCornersPS(np.array([0, -0.0393, 0.01], dtype=np.float32), deg2rad(90)),
-    94: getCornersPS(np.array([0, -0.0390, 0.01], dtype=np.float32), deg2rad(180)),
-    93: getCornersPS(np.array([0, -0.0393, 0.01], dtype=np.float32), deg2rad(270)),
-    92: getCornersPS(np.array([0, -0.0390, 0.01], dtype=np.float32), deg2rad(0)),
-}
+def getArucoParams():
+    arucoParams = aruco.DetectorParameters()
+    arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_CONTOUR
+    arucoParams.cornerRefinementWinSize = 2
+    # Reduce the number of threshold steps, which significantly improves performance
+    arucoParams.adaptiveThreshWinSizeMin = 15
+    arucoParams.adaptiveThreshWinSizeMax = 15
+    arucoParams.useAruco3Detection = False
+    arucoParams.minMarkerPerimeterRate = 0.02
+    arucoParams.maxMarkerPerimeterRate = 0.5
+    arucoParams.minSideLengthCanonicalImg = 16
+    return arucoParams
+
 
 arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
-arucoParams = aruco.DetectorParameters()
-arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_CONTOUR
-arucoParams.cornerRefinementWinSize = 2
-# Reduce the number of threshold steps, which significantly improves performance
-arucoParams.adaptiveThreshWinSizeMin = 15
-arucoParams.adaptiveThreshWinSizeMax = 15
-arucoParams.useAruco3Detection = False
-arucoParams.minMarkerPerimeterRate = 0.02
-arucoParams.maxMarkerPerimeterRate = 0.5
-arucoParams.minSideLengthCanonicalImg = 16
+arucoParams = getArucoParams()
 detector = aruco.ArucoDetector(arucoDic, arucoParams)
 
 reprojectionErrorThreshold = 3  # px
@@ -199,12 +164,13 @@ def solve_pnp(
 
 
 class MarkerTracker:
-    def __init__(self, cameraMatrix: np.ndarray, distCoeffs: np.ndarray):
+    def __init__(self, cameraMatrix: np.ndarray, distCoeffs: np.ndarray, markerPositions: dict[int, np.ndarray]):
         self.cameraMatrix = cameraMatrix
         self.distCoeffs = distCoeffs
         self.rvec: Optional[np.ndarray] = None
         self.tvec: Optional[np.ndarray] = None
         self.initialized = False
+        self.markerPositions = markerPositions
         pass
 
     def process_frame(self, frame: np.ndarray):
@@ -215,8 +181,8 @@ class MarkerTracker:
         if ids is not None:
             for i in range(ids.shape[0]):
                 id, cornersIS = (ids[i, 0], allCornersIS[i][0, :, :])
-                if id in markersOnPen:
-                    cornersPS = markersOnPen[id]
+                if id in self.markerPositions:
+                    cornersPS = self.markerPositions[id]
                     validMarkers.append((id, cornersPS, cornersIS))
 
         if len(validMarkers) < 1:
@@ -246,12 +212,19 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
     print("Opening webcam..")
     webcam = getWebcam()
 
+    try:
+        with open("calibratedMarkerPositions.pkl", "rb") as f:
+            markerPositions = pickle.load(f)
+    except:
+        print("Couldn't load calibrated marker positions, using ideal positions")
+        markerPositions = idealMarkerPositions
+
     calibrated = False
     baseRvec = np.zeros([3, 1])
     baseTvec = np.zeros([3, 1])
     avg_fps = 30
 
-    tracker = MarkerTracker(cameraMatrix, distCoeffs)
+    tracker = MarkerTracker(cameraMatrix, distCoeffs, markerPositions)
 
     while True:
         frameStartTime = time.perf_counter()
@@ -269,6 +242,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
         if keypress == ord("s"):
             focus = round(webcam.get(cv2.CAP_PROP_FOCUS))
             filepath = f"calibration_pics/f{focus}/{round(time.time())}.jpg"
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
             success = cv2.imwrite(filepath, frame)
             print(f"save: {success}, {filepath}")
 
