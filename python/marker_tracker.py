@@ -164,44 +164,82 @@ def solve_pnp(
 
 
 class MarkerTracker:
-    def __init__(self, cameraMatrix: np.ndarray, distCoeffs: np.ndarray, markerPositions: dict[int, np.ndarray]):
+    def __init__(
+        self,
+        cameraMatrix: np.ndarray,
+        distCoeffs: np.ndarray,
+        markerPositions: dict[int, np.ndarray],
+    ):
         self.cameraMatrix = cameraMatrix
         self.distCoeffs = distCoeffs
         self.rvec: Optional[np.ndarray] = None
         self.tvec: Optional[np.ndarray] = None
         self.initialized = False
         self.markerPositions = markerPositions
+        self.lastValidMarkers = {}
         pass
 
     def process_frame(self, frame: np.ndarray):
         ids: np.ndarray
         allCornersIS, ids, rejected = detector.detectMarkers(frame)
         aruco.drawDetectedMarkers(frame, allCornersIS, ids)
-        validMarkers = []
+        validMarkers = {}
         if ids is not None:
             for i in range(ids.shape[0]):
+                # cornersIS is 4x2
                 id, cornersIS = (ids[i, 0], allCornersIS[i][0, :, :])
                 if id in self.markerPositions:
                     cornersPS = self.markerPositions[id]
-                    validMarkers.append((id, cornersPS, cornersIS))
+                    validMarkers[id] = (cornersPS, cornersIS)
 
         if len(validMarkers) < 1:
             self.initialized = False
+            self.lastValidMarkers = {}
             return None
 
-        screenCorners = np.concatenate([cornersIS for _, _, cornersIS in validMarkers])
-        penCorners = np.concatenate([cornersPS for _, cornersPS, _ in validMarkers])
+        screenCorners = []
+        penCorners = []
+        delayPerImageRow = 1 / 30 / 1080  # seconds/row
+
+        pointDeltas = []
+        for id, (cornersPS, cornersIS) in validMarkers.items():
+            # screenCorners.append(cornersIS)
+            if id in self.lastValidMarkers:
+                velocity = cornersIS - self.lastValidMarkers[id][1]
+                pointDeltas.append(np.mean(velocity, axis=0))
+
+        if pointDeltas:
+            meanVelocity = np.mean(pointDeltas, axis=0) * 30  # px/second
+        meanPositionIS = np.mean(
+            [cornersIS for _, cornersIS in validMarkers.values()],
+            axis=(0, 1),
+        )
+
+        for id, (cornersPS, cornersIS) in validMarkers.items():
+            penCorners.append(cornersPS)
+            if pointDeltas:
+                # Compensate for rolling shutter
+                timeDelay = (
+                    cornersIS[:, 1] - meanPositionIS[1]
+                ) * delayPerImageRow  # seconds, relative to centroid
+                cornersISCompensated = (
+                    cornersIS - meanVelocity * timeDelay[:, np.newaxis]
+                )
+                screenCorners.append(cornersISCompensated)
+            else:
+                screenCorners.append(cornersIS)
 
         self.initialized, self.rvec, self.tvec = solve_pnp(
             self.initialized,
             self.rvec,
             self.tvec,
-            objectPoints=penCorners,
-            imagePoints=screenCorners,
+            objectPoints=np.concatenate(penCorners),
+            imagePoints=np.concatenate(screenCorners),
             cameraMatrix=self.cameraMatrix,
             distCoeffs=self.distCoeffs,
         )
 
+        self.lastValidMarkers = validMarkers
         return (self.rvec, self.tvec)
 
 
