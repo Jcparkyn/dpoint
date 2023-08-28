@@ -209,8 +209,7 @@ def camera_measurement(state: Mat):
 
 @njit(cache=True)
 def repair_quaternion(q: Mat):
-    if q[0] < 0:
-        q = -q
+    # Note: we can't change the sign here, because it will affect the smoothing
     return q / np.linalg.norm(q)
 
 
