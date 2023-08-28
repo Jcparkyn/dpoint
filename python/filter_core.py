@@ -244,9 +244,9 @@ def ekf_predict(fs: FilterState, dt: float, Q: np.ndarray):
 def ekf_correct(x: Mat, P: Mat, h: Mat, H: Mat, z: Mat, R: Mat):
     S = H @ P @ H.T + R  # innovation covariance
     W = P @ H.T @ np.linalg.inv(S)
-    x = x + W @ (z - h)
-    P = P - W @ H @ P
-    return x, P
+    x2 = x + W @ (z - h)
+    P2 = P - W @ H @ P
+    return x2, P2
 
 
 @njit(cache=True)
@@ -284,7 +284,6 @@ def ekf_smooth(history: list[HistoryItem], dt: float):
         h = history[i]
         F = np.eye(STATE_SIZE) + state_transition_jacobian(h.updated_state) * dt
         A = h.updated_statecov @ F.T @ np.linalg.inv(history[i + 1].predicted_statecov)
-        smoothed_state[i] = h.updated_state + A @ (
-            smoothed_state[i + 1] - history[i + 1].predicted_state
-        )
+        correction = A @ (smoothed_state[i + 1] - history[i + 1].predicted_state)
+        smoothed_state[i] = h.updated_state + correction
     return smoothed_state

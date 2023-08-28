@@ -128,8 +128,8 @@ class DpointFilter:
             fs.state[i_quat], or_quat.elements
         )
         pos_error = np.linalg.norm(imu_pos - fs.state[i_pos])
-        if pos_error > 0.2 or or_error > 0.3:
-            print(f"Resetting state, error: {pos_error + or_error}")
+        if pos_error > 0.05 or or_error > 0.3:
+            print(f"Resetting state, errors: {pos_error}, {or_error}")
             self.fs = initial_state(imu_pos, or_quat_smoothed)
             self.history = deque()
             return []
