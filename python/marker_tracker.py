@@ -138,8 +138,9 @@ def solve_pnp(
             imagePoints,
             cameraMatrix=cameraMatrix,
             distCoeffs=distCoeffs,
-            rvec=prevRvec,
-            tvec=prevTvec,
+            # OpenCV mutates these arguments, which we don't want.
+            rvec=prevRvec.copy(),
+            tvec=prevTvec.copy(),
         )
         projectedImagePoints, _ = cv2.projectPoints(
             objectPoints, rvec, tvec, cameraMatrix, distCoeffs, None
