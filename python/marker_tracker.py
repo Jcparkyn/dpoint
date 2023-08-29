@@ -198,13 +198,8 @@ class MarkerTracker:
             self.lastValidMarkers = {}
             return None
 
-        screenCorners = []
-        penCorners = []
-        delayPerImageRow = 1 / 30 / 1080  # seconds/row
-
         pointDeltas = []
         for id, (cornersPS, cornersIS) in validMarkers.items():
-            # screenCorners.append(cornersIS)
             if id in self.lastValidMarkers:
                 velocity = cornersIS - self.lastValidMarkers[id][1]
                 pointDeltas.append(np.mean(velocity, axis=0))
@@ -215,6 +210,10 @@ class MarkerTracker:
             [cornersIS for _, cornersIS in validMarkers.values()],
             axis=(0, 1),
         )
+
+        screenCorners = []
+        penCorners = []
+        delayPerImageRow = 1 / 30 / 1080  # seconds/row
 
         for id, (cornersPS, cornersIS) in validMarkers.items():
             penCorners.append(cornersPS)
