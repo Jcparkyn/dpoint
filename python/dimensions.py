@@ -39,8 +39,8 @@ idealMarkerPositions = {
     98: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(225)),
     97: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(315)),
     96: getCornersPS(np.array([0, -0.01, 0.01], dtype=np.float32), deg2rad(45)),
-    95: getCornersPS(np.array([0, -0.030, 0.01], dtype=np.float32), deg2rad(90)),
-    94: getCornersPS(np.array([0, -0.030, 0.01], dtype=np.float32), deg2rad(180)),
-    93: getCornersPS(np.array([0, -0.030, 0.01], dtype=np.float32), deg2rad(270)),
-    92: getCornersPS(np.array([0, -0.030, 0.01], dtype=np.float32), deg2rad(0)),
+    95: getCornersPS(np.array([0, -0.0395, 0.01], dtype=np.float32), deg2rad(90)),
+    94: getCornersPS(np.array([0, -0.0395, 0.01], dtype=np.float32), deg2rad(180)),
+    93: getCornersPS(np.array([0, -0.0395, 0.01], dtype=np.float32), deg2rad(270)),
+    92: getCornersPS(np.array([0, -0.0395, 0.01], dtype=np.float32), deg2rad(0)),
 }
