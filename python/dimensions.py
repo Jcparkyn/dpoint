@@ -2,7 +2,7 @@ import numpy as np
 
 
 IMU_OFFSET = (0.0, -0.01, 0.004)  # position of IMU relative to the top of the stylus
-STYLUS_LENGTH = 0.167  # length from the tip to the top of the stylus
+STYLUS_LENGTH = 0.168  # length from the tip to the top of the stylus
 
 def rotateY(angle: float, point: np.ndarray) -> np.ndarray:
     c, s = np.cos(angle), np.sin(angle)
