@@ -78,7 +78,7 @@ reprojectionErrorThreshold = 3  # px
 
 
 def array_to_str(arr):
-    return ",".join(map(lambda x: f"{x:+2.1f}", list(arr.flat)))
+    return ",".join(map(lambda x: f"{x:+2.2f}", list(arr.flat)))
 
 
 charuco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
@@ -245,7 +245,8 @@ class MarkerTracker:
 
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
-    cv2.moveWindow("Tracker", -1080, -150)
+    cv2.moveWindow("Tracker", -1080, -120)
+    cv2.resizeWindow("Tracker", 1050, int(1050*1080/1920))
     cameraMatrix, distCoeffs = readCameraParameters("camera_params_c922_f30.yml")
     print("Opening webcam..")
     webcam = getWebcam()
@@ -303,6 +304,9 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             rvecTip, tvecTip, *_ = cv2.composeRT(
                 np.zeros(3), tip_to_imu_offset, rvec, tvec
             )
+            _, tvecTipRelative = relativeTransform(
+                rvecTip, tvecTip, baseRvec, baseTvec
+            )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, 0.01)
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01)
@@ -310,6 +314,14 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 frame,
                 f"IMU: [{array_to_str(tvecRelative*100)}]cm",
                 (10, 120),
+                cv2.FONT_HERSHEY_DUPLEX,
+                1,
+                (0, 255, 0),
+            )
+            cv2.putText(
+                frame,
+                f"TIP: [{array_to_str(tvecTipRelative*100)}]cm",
+                (10, 150),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
                 (0, 255, 0),
