@@ -95,7 +95,7 @@ def minimise_chamfer_distance(a: np.ndarray, b: np.ndarray, iterations=3):
     return offset, dist
 
 
-def resample_line(points, pressure, desired_distance):
+def resample_line(points, desired_distance, mask):
     assert points.shape[1] == 2
     if points.shape[0] < 2:
         raise ValueError("The input array should contain at least 2 points.")
@@ -114,11 +114,11 @@ def resample_line(points, pressure, desired_distance):
     # Interpolate new points along the line
     new_distances = np.linspace(0, total_length, num_points)
     resampled_points = np.zeros((num_points, 2))
-    resampled_pressure = np.interp(new_distances, distances, pressure)
+    resampled_mask = np.interp(new_distances, distances, mask)
     for i in range(2):
         resampled_points[:, i] = np.interp(new_distances, distances, points[:, i])
 
-    return resampled_points, resampled_pressure
+    return resampled_points[resampled_mask > 0.5, :]
 
 
 if __name__ == "__main__":
@@ -137,14 +137,20 @@ if __name__ == "__main__":
     scan_x, scan_y = get_black_points(np.asarray(scan_img), scan_dpi)
     scan_points = normalize_points(np.column_stack((scan_x, scan_y)))
 
-    tps_resampled, pressure_resampled = resample_line(
-        tip_pos_smoothed[:, :2], pressure, 0.001 * 0.5
+    resample_dist = 0.001 * 0.5 # 0.5mm
+    tps_resampled = resample_line(
+        tip_pos_smoothed[:, :2], resample_dist, mask=pressure > 0.1
     )
-    tps_black = tps_resampled[pressure_resampled > 0.1, :]
-    offset, dist = minimise_chamfer_distance(scan_points, tps_black, iterations=3)
-    offset3d = np.append(offset, 0)
+    tpp_resampled = resample_line(
+        tip_pos_predicted[:, :2], resample_dist, mask=pressure > 0.1
+    )
+    tps_offset, tps_dist = minimise_chamfer_distance(scan_points, tps_resampled, iterations=3)
+    tpp_offset, tpp_dist = minimise_chamfer_distance(scan_points, tpp_resampled, iterations=3)
+    offset3d = np.append(tps_offset, 0)
 
-    print(f"Chamfer distance: {np.mean(dist)*1000:0.4f}mm")
+    tps_dist_mean = np.mean(tps_dist)
+    tpp_dist_mean = np.mean(tpp_dist)
+    print(f"Chamfer distance: {tps_dist_mean*1000:0.4f}mm")
 
     ax: Axes = sns.scatterplot(
         x=scan_points[:, 0] * 1000,
@@ -152,6 +158,7 @@ if __name__ == "__main__":
         color=(0.8, 0.8, 1),
         size=0.05,
         alpha=0.8,
+        linewidth=0,
     )
     ax.set_aspect("equal")
     ax.set(xlabel="x (mm)", ylabel="y (mm)")
@@ -177,7 +184,11 @@ if __name__ == "__main__":
     ax.add_collection(lc2)
     ax.legend(
         [scan_handle, lc1_proxy, lc2_proxy],
-        ["Scan", "Predicted stroke", "Smoothed stroke"],
+        [
+            "Scan",
+            f"Predicted stroke (d={tpp_dist_mean*1000:0.2f}mm)",
+            f"Smoothed stroke (d={tps_dist_mean*1000:0.2f}mm)",
+        ],
         loc="upper right",
     )
 
