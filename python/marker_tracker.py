@@ -243,10 +243,29 @@ class MarkerTracker:
         return (self.rvec, self.tvec)
 
 
+focus_interval = 30  # frames
+# Map from distance to optimal focus value, measured manually.
+# These don't need to be very precise.
+focus_targets = np.array(
+    [
+        [0.1, 75],
+        [0.15, 50],
+        [0.2, 40],
+        [0.3, 30],
+        [0.5, 25],
+    ]
+)
+
+
+def get_focus_target(dist_to_camera):
+    f = np.interp([dist_to_camera], focus_targets[:, 0], focus_targets[:, 1])[0]
+    return 5 * round(f / 5)  # Webcam only supports multiples of 5
+
+
 def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -120)
-    cv2.resizeWindow("Tracker", 1050, int(1050*1080/1920))
+    cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
     cameraMatrix, distCoeffs = readCameraParameters("camera_params_c922_f30.yml")
     print("Opening webcam..")
     webcam = getWebcam()
@@ -264,16 +283,24 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
     avg_fps = 30
 
     tracker = MarkerTracker(cameraMatrix, distCoeffs, markerPositions)
-
+    frame_count = 0
+    auto_focus = True
+    current_focus = 30
     while True:
         frameStartTime = time.perf_counter()
         keypress = cv2.waitKey(1) & 0xFF
         if keypress == ord("q"):
             break
         elif keypress == ord("u"):
-            webcam.set(cv2.CAP_PROP_FOCUS, webcam.get(cv2.CAP_PROP_FOCUS) + 5)
+            auto_focus = False
+            current_focus += 5
+            webcam.set(cv2.CAP_PROP_FOCUS, current_focus)
         elif keypress == ord("d"):
-            webcam.set(cv2.CAP_PROP_FOCUS, webcam.get(cv2.CAP_PROP_FOCUS) - 5)
+            auto_focus = False
+            current_focus -= 5
+            webcam.set(cv2.CAP_PROP_FOCUS, current_focus)
+        elif keypress == ord("a"):
+            auto_focus = True
 
         frame: np.ndarray
         ret, frame = webcam.read()
@@ -304,9 +331,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             rvecTip, tvecTip, *_ = cv2.composeRT(
                 np.zeros(3), tip_to_imu_offset, rvec, tvec
             )
-            _, tvecTipRelative = relativeTransform(
-                rvecTip, tvecTip, baseRvec, baseTvec
-            )
+            _, tvecTipRelative = relativeTransform(rvecTip, tvecTip, baseRvec, baseTvec)
             Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, 0.01)
             cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01)
@@ -316,16 +341,17 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
                 (10, 120),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
-                (0, 255, 0),
+                (255, 0, 0),
             )
             cv2.putText(
                 frame,
-                f"TIP: [{array_to_str(tvecTipRelative*100)}]cm",
+                f"Tip: [{array_to_str(tvecTipRelative*100)}]cm",
                 (10, 150),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
-                (0, 255, 0),
+                (255, 0, 0),
             )
+
             if on_estimate is not None:
                 on_estimate(CameraReading(tvecRelative, Rrelative))
 
@@ -348,8 +374,29 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
             1,
             (0, 255, 0),
         )
+        cv2.putText(
+            frame,
+            f"Focus: {current_focus}",
+            (10, 180),
+            cv2.FONT_HERSHEY_DUPLEX,
+            1,
+            (255, 0, 0),
+        )
 
         cv2.imshow("Tracker", frame)
+
+        # Adjust focus periodically
+        if auto_focus and frame_count % focus_interval == 0:
+            if result is None:
+                focus = 30
+            else:
+                dist_to_camera = np.linalg.norm(tvec)
+                focus = get_focus_target(dist_to_camera)
+            if focus != current_focus:
+                current_focus = focus
+                webcam.set(cv2.CAP_PROP_FOCUS, focus)
+
+        frame_count += 1
 
 
 if __name__ == "__main__" and sys.flags.interactive == 0:
