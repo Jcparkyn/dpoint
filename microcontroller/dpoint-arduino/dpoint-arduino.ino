@@ -57,6 +57,8 @@ bool start_ble() {
   myIMU.settings.gyroRange = 500; // Can be: 125, 245, 500, 1000, 2000
   myIMU.settings.accelSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666, 3332, 6664, 13330
   myIMU.settings.gyroSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666
+  myIMU.settings.accelBandWidth = 200;
+  myIMU.settings.gyroBandWidth = 200;
 
 
   if (myIMU.begin() != 0) {
