@@ -43,7 +43,6 @@ camera_noise_pos = 0.1e-5
 camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
-smoothing_length = 14 # samples
 camera_delay = 4 # samples
 
 def initial_state(position=None, orientation=None):
@@ -88,16 +87,15 @@ def nearest_quaternion(reference: Mat, new: Mat):
 class DpointFilter:
     history: Deque[HistoryItem]
 
-    def __init__(self, dt):
+    def __init__(self, dt, smoothing_length = 14):
         self.history = deque()
         self.fs = initial_state()
         self.dt = dt
+        self.smoothing_length = smoothing_length
 
     def update_imu(self, accel: np.ndarray, gyro: np.ndarray):
         predicted = ekf_predict(self.fs, self.dt, Q)
         self.fs = fuse_imu(predicted, accel, gyro, imu_noise)
-        if len(self.history) >= smoothing_length + camera_delay + 1:
-            self.history.popleft()
         self.history.append(
             HistoryItem(
                 self.fs.state,
@@ -108,6 +106,9 @@ class DpointFilter:
                 gyro=gyro,
             )
         )
+        max_history_len = self.smoothing_length + camera_delay + 1
+        if len(self.history) > max_history_len:
+            self.history.popleft()
 
     def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray) -> list[np.ndarray]:
         if len(self.history) == 0:
@@ -144,8 +145,9 @@ class DpointFilter:
             )
         )
 
-        # Apply smoothing to the rest of the history
-        # TODO: We could also smooth the future measurements
+        # Apply smoothing to the rest of the history.
+        # We could also smooth the future measurements, but that would be slower
+        # for very little benefit (the final estimate won't change).
         smoothed_estimates = ekf_smooth(
             List(
                 [
