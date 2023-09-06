@@ -256,6 +256,14 @@ focus_targets = np.array(
     ]
 )
 
+def load_marker_positions():
+    try:
+        with open("calibratedMarkerPositions.pkl", "rb") as f:
+            return pickle.load(f)
+    except:
+        print("Couldn't load calibrated marker positions, using ideal positions")
+    return idealMarkerPositions
+
 
 def get_focus_target(dist_to_camera):
     f = np.interp([dist_to_camera], focus_targets[:, 0], focus_targets[:, 1])[0]
@@ -267,15 +275,9 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
     cv2.moveWindow("Tracker", -1080, -120)
     cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
     cameraMatrix, distCoeffs = readCameraParameters("camera_params_c922_f30.yml")
+    markerPositions = load_marker_positions()
     print("Opening webcam..")
     webcam = getWebcam()
-
-    try:
-        with open("calibratedMarkerPositions.pkl", "rb") as f:
-            markerPositions = pickle.load(f)
-    except:
-        print("Couldn't load calibrated marker positions, using ideal positions")
-        markerPositions = idealMarkerPositions
 
     calibrated = False
     baseRvec = np.zeros([3, 1])
