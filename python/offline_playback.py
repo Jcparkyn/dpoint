@@ -1,22 +1,12 @@
-import pickle
-from matplotlib import pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.collections import LineCollection
-from matplotlib.lines import Line2D
+from typing import NamedTuple
 
 import numpy as np
-from app import get_line_color_from_pressure
 
 from filter import DpointFilter
 from marker_tracker import CameraReading
 from monitor_ble import StylusReading
-from vispy import plot as vp
-from vispy.color import Color
-from vispy.plot import PlotWidget
-from PIL import Image
 import cv2 as cv
 from scipy.spatial import KDTree
-import seaborn as sns
 
 INCH_TO_METRE = 0.0254
 
@@ -58,6 +48,7 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
     pressure = np.zeros(sample_count)
 
     pressure_baseline = 0.017  # Approximate measured value for initial estimate
+    pressure_avg_factor = 0.1  # Factor for exponential moving average
     pressure_range = 0.02
     pressure_offset = 0.003  # Offset so that small positive numbers are treated as zero
     sample = 0
@@ -73,7 +64,15 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                 # print(f"t: {t}, accel: {accel}, gyro: {gyro}, pressure: {p}")
                 filter.update_imu(accel, gyro)
                 position, orientation = filter.get_tip_pose()
+                zpos = position[2]
+                if zpos > 0.005:
+                    # calibrate pressure baseline using current pressure reading
+                    pressure_baseline = (
+                        pressure_baseline * (1 - pressure_avg_factor)
+                        + reading.pressure * pressure_avg_factor
+                    )
                 tip_pos_predicted[sample, :] = position.flatten()
+                tip_pos_smoothed[sample, :] = position.flatten()
                 pressure[sample] = (
                     p - pressure_baseline - pressure_offset
                 ) / pressure_range
@@ -121,95 +120,39 @@ def resample_line(points, desired_distance, mask):
     return resampled_points[resampled_mask > 0.5, :]
 
 
-if __name__ == "__main__":
-    recorded_data: list[tuple[float, CameraReading | StylusReading]] = []
-    with open("./recordings/20230816_170100/recorded_data.pickle", "rb") as pickle_file:
-        recorded_data = pickle.load(pickle_file)
+def merge_data(
+    stylus_data: list, camera_data: list
+) -> list[tuple[float, CameraReading | StylusReading]]:
+    result = [x for x in stylus_data if isinstance(x[1], StylusReading)] + camera_data
+    result.sort(key=lambda x: x[0])
+    return result
 
-    tip_pos_predicted, tip_pos_smoothed, pressure = replay_data(recorded_data)
-    s0, s1 = 100, -100
-    tip_pos_predicted = tip_pos_predicted[s0:s1, :]
-    tip_pos_smoothed = tip_pos_smoothed[s0:s1, :]
-    pressure = pressure[s0:s1]
 
-    scan_img = Image.open("./recordings/20230816_170100/scan.jpg")
-    scan_dpi, _ = scan_img.info.get("dpi")
-    scan_x, scan_y = get_black_points(np.asarray(scan_img), scan_dpi)
-    scan_points = normalize_points(np.column_stack((scan_x, scan_y)))
+class ProcessedStroke(NamedTuple):
+    position: np.ndarray
+    pressure: np.ndarray
+    dist_mean: float
 
-    resample_dist = 0.001 * 0.5 # 0.5mm
-    tps_resampled = resample_line(
-        tip_pos_smoothed[:, :2], resample_dist, mask=pressure > 0.1
+
+class ProcessResult(NamedTuple):
+    pressure: np.ndarray
+    paths: dict[str, ProcessedStroke]
+
+
+def process_stroke(
+    stroke: np.ndarray, scan_points: np.ndarray, pressure: np.ndarray
+) -> ProcessedStroke:
+    s0, s1 = 70, -70
+    resample_dist = 0.001 * 0.5  # 0.5mm
+    stroke2 = stroke[s0:s1, :]
+    stroke_resampled = resample_line(
+        stroke2[:, :2], resample_dist, mask=pressure[s0:s1] > 0.1
     )
-    tpp_resampled = resample_line(
-        tip_pos_predicted[:, :2], resample_dist, mask=pressure > 0.1
+    offset, dist = minimise_chamfer_distance(
+        scan_points, stroke_resampled, iterations=8
     )
-    tps_offset, tps_dist = minimise_chamfer_distance(scan_points, tps_resampled, iterations=3)
-    tpp_offset, tpp_dist = minimise_chamfer_distance(scan_points, tpp_resampled, iterations=3)
-    offset3d = np.append(tps_offset, 0)
-
-    tps_dist_mean = np.mean(tps_dist)
-    tpp_dist_mean = np.mean(tpp_dist)
-    print(f"Chamfer distance: {tps_dist_mean*1000:0.4f}mm")
-
-    ax: Axes = sns.scatterplot(
-        x=scan_points[:, 0] * 1000,
-        y=scan_points[:, 1] * 1000,
-        color=(0.8, 0.8, 1),
-        size=0.05,
-        alpha=0.8,
-        linewidth=0,
+    offset3d = np.append(offset, 0)
+    dist_mean = np.mean(dist)
+    return ProcessedStroke(
+        position=stroke2 + offset3d, pressure=pressure[s0:s1], dist_mean=dist_mean
     )
-    ax.set_aspect("equal")
-    ax.set(xlabel="x (mm)", ylabel="y (mm)")
-    scan_handle = ax.collections[0]
-
-    def line_to_linecollection(xy, pressure, width, color):
-        x, y = xy[:, 0], xy[:, 1]
-        segments = np.array([x[:-1], y[:-1], x[1:], y[1:]]).T.reshape(-1, 2, 2)
-        lc = LineCollection(segments)
-        lc.set_linewidth(pressure * width)
-        lc.set_alpha(np.sqrt(np.clip(pressure, 0, 1)))
-        lc.set_color(color)
-        proxy = Line2D([0, 1], [0, 1], color=color, lw=width, solid_capstyle="round")
-        return lc, proxy
-
-    lc1, lc1_proxy = line_to_linecollection(
-        (tip_pos_predicted + offset3d) * 1000, pressure, 1.5, color=(0.7, 0.2, 0.2)
-    )
-    ax.add_collection(lc1)
-    lc2, lc2_proxy = line_to_linecollection(
-        (tip_pos_smoothed + offset3d) * 1000, pressure, 3, color="black"
-    )
-    ax.add_collection(lc2)
-    ax.legend(
-        [scan_handle, lc1_proxy, lc2_proxy],
-        [
-            "Scan",
-            f"Predicted stroke (d={tpp_dist_mean*1000:0.2f}mm)",
-            f"Smoothed stroke (d={tps_dist_mean*1000:0.2f}mm)",
-        ],
-        loc="upper right",
-    )
-
-    plt.show()
-
-    # fig = vp.Fig(size=(800, 800), show=False)
-    # ax: PlotWidget = fig[0, 0]
-    # ax.plot(
-    #     tip_pos_predicted + offset3d,
-    #     marker_size=0,
-    #     color=get_line_color_from_pressure(pressure, (0.7, 0.2, 0.2)),
-    # )
-    # ax.plot(
-    #     tip_pos_smoothed + offset3d,
-    #     marker_size=0,
-    #     width=2,
-    #     color=get_line_color_from_pressure(pressure, (0, 0, 0)),
-    # )
-    # ax.view.camera.aspect = 1
-
-    # ax.plot(scan_points, marker_size=1, width=0, edge_color=(0, 0, 1, 0.2))
-    # # ax.plot(tps_black + offset, marker_size=1, color=(0, 1, 0), width=0)
-
-    # fig.show(run=True)
