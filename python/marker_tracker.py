@@ -1,4 +1,5 @@
 import math
+from pathlib import Path
 import os
 import pickle
 import cv2
@@ -7,8 +8,11 @@ import numpy as np
 from typing import NamedTuple, Tuple, Callable, Optional
 import time
 import sys
+import multiprocessing as mp
 
 from dimensions import IMU_OFFSET, STYLUS_LENGTH, idealMarkerPositions
+
+RECORD_DATA = True
 
 
 class CameraReading(NamedTuple):
@@ -270,7 +274,11 @@ def get_focus_target(dist_to_camera):
     return 5 * round(f / 5)  # Webcam only supports multiples of 5
 
 
-def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]]):
+def run_tracker(
+    on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]],
+    recording_enabled: mp.Value,
+    recording_timestamp: str,
+):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -120)
     cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
@@ -306,6 +314,7 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
 
         frame: np.ndarray
         ret, frame = webcam.read()
+        frame_original = frame.copy()
 
         if keypress == ord("s"):
             focus = round(webcam.get(cv2.CAP_PROP_FOCUS))
@@ -386,6 +395,17 @@ def run_tracker(on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]])
         )
 
         cv2.imshow("Tracker", frame)
+
+        if recording_enabled.value:
+            timestamp = time.time_ns() // 1_000_000
+            dir = f"recordings/{recording_timestamp}/frames"
+            Path(dir).mkdir(parents=True, exist_ok=True)
+            filepath = f"{dir}/{timestamp}.bmp"
+            cv2.imwrite(filepath, frame_original)
+            with open(
+                f"./recordings/{recording_timestamp}/camera_extrinsics.pkl", "wb"
+            ) as pickle_file:
+                pickle.dump((baseRvec, baseTvec), pickle_file)
 
         # Adjust focus periodically
         if auto_focus and frame_count % focus_interval == 0:

@@ -26,8 +26,12 @@ CANVAS_SIZE = (1080, 1080)  # (width, height)
 TRAIL_POINTS = 1000
 USE_3D_LINE = False # If true, uses a lower quality GL line renderer that supports 3D lines
 
-recording_enabled = False
+# Recording is only used for testing and evaluation of the system.
+# When enabled the data from the IMU and camera are saved to disk, so they can be replayed
+# offline with offline_ope.py and offline_playback,py.
+recording_enabled = mp.Value("b", False)
 app_start_datetime = datetime.datetime.now()
+recording_timestamp = app_start_datetime.strftime("%Y%m%d_%H%M%S")
 
 
 def append_line_point(line: np.ndarray, new_point: np.array):
@@ -130,13 +134,12 @@ class CanvasWrapper:
         )
 
     def on_key_press(self, e: vispy.app.canvas.KeyEvent):
-        global recording_enabled
         if e.key == "R":
             if "Control" in e.modifiers:
-                recording_enabled = True
+                recording_enabled.value = True
                 print("Recording enabled")
             else:
-                recording_enabled = False
+                recording_enabled.value = False
                 print("Recording disabled")
 
 
@@ -196,8 +199,8 @@ class QueueConsumer(QtCore.QObject):
                 while self._tracker_queue.qsize() > 2:
                     self._tracker_queue.get()
                 reading = self._tracker_queue.get_nowait()
-                if recording_enabled:
-                    self._recorded_data.append((time.time(), reading))
+                if recording_enabled.value:
+                    self._recorded_data.append((time.time_ns() // 1_000_000, reading))
                 samples_since_camera = 0
                 smoothed_tip_pos = self._filter.update_camera(
                     reading.position.flatten(), reading.orientation_mat
@@ -211,8 +214,8 @@ class QueueConsumer(QtCore.QObject):
                 samples_since_camera += 1
                 if samples_since_camera > 10:
                     continue
-                if recording_enabled:
-                    self._recorded_data.append((time.time(), reading))
+                if recording_enabled.value:
+                    self._recorded_data.append((time.time_ns() // 1_000_000, reading))
                 self._filter.update_imu(reading.accel, reading.gyro)
                 position, orientation = self._filter.get_tip_pose()
                 zpos = position[2]
@@ -236,8 +239,7 @@ class QueueConsumer(QtCore.QObject):
         print("Queue consumer finishing")
 
         if self._recorded_data:
-            timestamp = app_start_datetime.strftime("%Y%m%d_%H%M%S")
-            file = Path(f"recordings/{timestamp}/recorded_data.pickle")
+            file = Path(f"recordings/{recording_timestamp}/stylus_data.pkl")
             file.parent.mkdir(parents=True, exist_ok=True)
             with file.open("xb") as f:
                 pickle.dump(self._recorded_data, f)
@@ -249,8 +251,8 @@ class QueueConsumer(QtCore.QObject):
         self._should_end = True
 
 
-def run_tracker_with_queue(queue: mp.Queue):
-    run_tracker(lambda reading: queue.put(reading, block=False))
+def run_tracker_with_queue(queue: mp.Queue, *args):
+    run_tracker(lambda reading: queue.put(reading, block=False), *args)
 
 
 if __name__ == "__main__":
@@ -272,7 +274,7 @@ if __name__ == "__main__":
     queue_consumer.moveToThread(data_thread)
 
     camera_process = mp.Process(
-        target=run_tracker_with_queue, args=(tracker_queue,), daemon=False
+        target=run_tracker_with_queue, args=(tracker_queue, recording_enabled, recording_timestamp), daemon=False
     )
     camera_process.start()
 
