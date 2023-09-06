@@ -43,8 +43,8 @@ camera_noise_pos = 0.1e-5
 camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
-smoothing_length = 18
-
+smoothing_length = 14 # samples
+camera_delay = 4 # samples
 
 def initial_state(position=None, orientation=None):
     state = np.zeros(STATE_SIZE, dtype=np.float64)
@@ -96,7 +96,7 @@ class DpointFilter:
     def update_imu(self, accel: np.ndarray, gyro: np.ndarray):
         predicted = ekf_predict(self.fs, self.dt, Q)
         self.fs = fuse_imu(predicted, accel, gyro, imu_noise)
-        if len(self.history) > smoothing_length:
+        if len(self.history) >= smoothing_length + camera_delay + 1:
             self.history.popleft()
         self.history.append(
             HistoryItem(
@@ -112,12 +112,10 @@ class DpointFilter:
     def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray) -> list[np.ndarray]:
         if len(self.history) == 0:
             return []
-        # Make sure we don't delay past the end of our history
-        camera_delay = min(len(self.history) - 1, 4)  # IMU samples
 
         # Rollback and store recent IMU measurements
         replay: Deque[HistoryItem] = deque()
-        for _ in range(camera_delay):
+        for _ in range(min(len(self.history) - 1, camera_delay)):
             replay.appendleft(self.history.pop())
 
         # Fuse camera in its rightful place
