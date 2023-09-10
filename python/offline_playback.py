@@ -7,6 +7,8 @@ from marker_tracker import CameraReading
 from monitor_ble import StylusReading
 import cv2 as cv
 from scipy.spatial import KDTree
+from dimensions import IMU_OFFSET, STYLUS_LENGTH
+from pyquaternion import Quaternion
 
 INCH_TO_METRE = 0.0254
 
@@ -36,6 +38,14 @@ def normalize_points(xy: np.ndarray):
     return xy - np.mean(xy, axis=0)
 
 
+def camera_reading_to_tip_pos(reading: CameraReading):
+    orientation_quat = Quaternion(matrix=reading.orientation_mat)
+    tip_pos = reading.position.flatten() - orientation_quat.rotate(
+        np.array([0, STYLUS_LENGTH, 0]) + IMU_OFFSET
+    ).flatten()
+    return tip_pos
+
+
 def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]], dt, smoothing_length, camera_delay):
     filter = DpointFilter(dt=dt, smoothing_length=smoothing_length, camera_delay=camera_delay)
     sample_count = sum(
@@ -47,6 +57,9 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
     tip_pos_smoothed = np.zeros((sample_count, 3))
     pressure = np.zeros(sample_count)
 
+    tip_pos_cameraonly = []
+    pressure_cameraonly = []
+
     pressure_baseline = 0.017  # Approximate measured value for initial estimate
     pressure_avg_factor = 0.1  # Factor for exponential moving average
     pressure_range = 0.02
@@ -56,6 +69,8 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
         match reading:
             case CameraReading(pos, or_mat):
                 # print(f"t: {t}, pos: {pos}, or_mat: {or_mat}")
+                tip_pos_cameraonly.append(camera_reading_to_tip_pos(reading))
+                pressure_cameraonly.append(pressure[sample - 4])
                 smoothed_tip_pos = filter.update_camera(pos.flatten(), or_mat)
                 if smoothed_tip_pos:
                     start = sample - len(smoothed_tip_pos) + 1
@@ -78,7 +93,7 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                     p - pressure_baseline - pressure_offset
                 ) / pressure_range
                 sample += 1
-    return tip_pos_predicted, tip_pos_smoothed, pressure
+    return tip_pos_predicted, tip_pos_smoothed, pressure, np.row_stack(tip_pos_cameraonly), np.array(pressure_cameraonly)
 
 
 def minimise_chamfer_distance(a: np.ndarray, b: np.ndarray, iterations=3):
