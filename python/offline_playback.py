@@ -36,8 +36,8 @@ def normalize_points(xy: np.ndarray):
     return xy - np.mean(xy, axis=0)
 
 
-def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]], smoothing_length):
-    filter = DpointFilter(dt=1 / 120, smoothing_length=smoothing_length)
+def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]], dt, smoothing_length, camera_delay):
+    filter = DpointFilter(dt=dt, smoothing_length=smoothing_length, camera_delay=camera_delay)
     sample_count = sum(
         isinstance(reading, StylusReading) for _, reading in recorded_data
     )
