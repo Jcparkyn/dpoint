@@ -43,7 +43,8 @@ camera_noise_pos = 0.1e-5
 camera_noise_or = 0.5e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
-camera_delay = 4 # samples
+camera_delay = 4  # samples
+
 
 def initial_state(position=None, orientation=None):
     state = np.zeros(STATE_SIZE, dtype=np.float64)
@@ -84,10 +85,21 @@ def nearest_quaternion(reference: Mat, new: Mat):
     return (new, error1) if error1 < error2 else (-new, error2)
 
 
+def blend_new_data(old: np.ndarray, new: np.ndarray, alpha: float):
+    """Blends between old and new based on a power curve.
+    Abruptly stopping smoothing can sometimes cause jumps, so we fade out the correction.
+    This isn't mathematically optimal, but it looks a bit nicer.
+    """
+    N = old.shape[0]
+    # This is just an arbitrary function that starts close to zero and ends at one.
+    mix_factor = np.linspace(1 / 2 / N, 1, N)[:, np.newaxis] ** alpha
+    return old * (1 - mix_factor) + new * mix_factor
+
+
 class DpointFilter:
     history: Deque[HistoryItem]
 
-    def __init__(self, dt, smoothing_length = 14):
+    def __init__(self, dt, smoothing_length=8):
         self.history = deque()
         self.fs = initial_state()
         self.dt = dt
@@ -110,7 +122,9 @@ class DpointFilter:
         if len(self.history) > max_history_len:
             self.history.popleft()
 
-    def update_camera(self, imu_pos: np.ndarray, orientation_mat: np.ndarray) -> list[np.ndarray]:
+    def update_camera(
+        self, imu_pos: np.ndarray, orientation_mat: np.ndarray
+    ) -> list[np.ndarray]:
         if len(self.history) == 0:
             return []
 

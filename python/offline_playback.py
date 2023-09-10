@@ -2,7 +2,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from filter import DpointFilter
+from filter import DpointFilter, blend_new_data
 from marker_tracker import CameraReading
 from monitor_ble import StylusReading
 import cv2 as cv
@@ -59,7 +59,8 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                 smoothed_tip_pos = filter.update_camera(pos.flatten(), or_mat)
                 if smoothed_tip_pos:
                     start = sample - len(smoothed_tip_pos) + 1
-                    tip_pos_smoothed[start : sample + 1, :] = smoothed_tip_pos
+                    tps_view = tip_pos_smoothed[start : sample + 1, :]
+                    tps_view[:,:] = blend_new_data(tps_view, smoothed_tip_pos, 0.5)
             case StylusReading(accel, gyro, _, p):
                 # print(f"t: {t}, accel: {accel}, gyro: {gyro}, pressure: {p}")
                 filter.update_imu(accel, gyro)

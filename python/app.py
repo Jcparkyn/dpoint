@@ -17,7 +17,7 @@ from vispy.visuals import transforms
 import numpy as np
 import queue
 import multiprocessing as mp
-from filter import DpointFilter
+from filter import DpointFilter, blend_new_data
 
 from marker_tracker import CameraReading, run_tracker
 from monitor_ble import StopCommand, StylusReading, monitor_ble
@@ -124,7 +124,8 @@ class CanvasWrapper:
             position_replace: list[np.ndarray] = new_data_dict["position_replace"]
             if len(position_replace) == 0:
                 return
-            self.line_data_pos[-len(position_replace) :, :] = position_replace
+            view = self.line_data_pos[-len(position_replace) :, :]
+            view[:,:] = blend_new_data(view, position_replace, 0.5)
             self.refresh_line()
 
     def refresh_line(self):
