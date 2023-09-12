@@ -158,11 +158,9 @@ class ProcessResult(NamedTuple):
 def process_stroke(
     stroke: np.ndarray, scan_points: np.ndarray, pressure: np.ndarray
 ) -> ProcessedStroke:
-    s0, s1 = 70, -70
     resample_dist = 0.001 * 0.5  # 0.5mm
-    stroke2 = stroke[s0:s1, :]
     stroke_resampled = resample_line(
-        stroke2[:, :2], resample_dist, mask=pressure[s0:s1] > 0.1
+        stroke[:, :2], resample_dist, mask=pressure > 0.1
     )
     offset, dist = minimise_chamfer_distance(
         scan_points, stroke_resampled, iterations=8
@@ -170,5 +168,5 @@ def process_stroke(
     offset3d = np.append(offset, 0)
     dist_mean = np.mean(dist)
     return ProcessedStroke(
-        position=stroke2 + offset3d, pressure=pressure[s0:s1], dist_mean=dist_mean
+        position=stroke + offset3d, pressure=pressure, dist_mean=dist_mean
     )
