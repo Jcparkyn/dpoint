@@ -40,7 +40,7 @@ def getWebcam():
     webcam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
     webcam.set(cv2.CAP_PROP_FOCUS, 30)
     webcam.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)
-    webcam.set(cv2.CAP_PROP_EXPOSURE, -8)
+    webcam.set(cv2.CAP_PROP_EXPOSURE, -9)
     webcam.set(cv2.CAP_PROP_BRIGHTNESS, 127)
     webcam.set(cv2.CAP_PROP_CONTRAST, 140)
     webcam.set(cv2.CAP_PROP_GAIN, 200)
