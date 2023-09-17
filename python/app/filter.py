@@ -5,8 +5,8 @@ from numpy import typing as npt
 from pyquaternion import Quaternion
 from numba.typed.typedlist import List
 
-from dimensions import IMU_OFFSET, STYLUS_LENGTH
-from filter_core import (
+from app.dimensions import IMU_OFFSET, STYLUS_LENGTH
+from app.filter_core import (
     STATE_SIZE,
     FilterState,
     HistoryItem,

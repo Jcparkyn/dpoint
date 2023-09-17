@@ -18,10 +18,10 @@ from vispy.visuals import transforms
 import numpy as np
 import queue
 import multiprocessing as mp
-from filter import DpointFilter, blend_new_data
+from app.filter import DpointFilter, blend_new_data
 
-from marker_tracker import CameraReading, run_tracker
-from monitor_ble import StopCommand, StylusReading, monitor_ble
+from app.marker_tracker import CameraReading, run_tracker
+from app.monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
 TRAIL_POINTS = 1000
@@ -274,7 +274,7 @@ def run_tracker_with_queue(queue: mp.Queue, *args):
     run_tracker(lambda reading: queue.put(reading, block=False), *args)
 
 
-if __name__ == "__main__":
+def main():
     np.set_printoptions(
         precision=3, suppress=True, formatter={"float": "{: >5.2f}".format}
     )

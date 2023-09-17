@@ -9,8 +9,8 @@ import cv2
 import glob
 import scipy.optimize
 from cv2 import aruco
-from marker_tracker import arucoParams, readCameraParameters
-from dimensions import idealMarkerPositions
+from app.marker_tracker import arucoParams, readCameraParameters
+from app.dimensions import idealMarkerPositions
 
 MARKER_COUNT = 8  # The number of markers on the pen
 FIRST_MARKER_ID = 92  # ID of the first marker on the pen, used to convert IDs to 0-n.

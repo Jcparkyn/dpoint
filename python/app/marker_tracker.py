@@ -11,7 +11,7 @@ import time
 import sys
 import multiprocessing as mp
 
-from dimensions import IMU_OFFSET, STYLUS_LENGTH, idealMarkerPositions
+from app.dimensions import IMU_OFFSET, STYLUS_LENGTH, idealMarkerPositions
 
 RECORD_DATA = True
 
