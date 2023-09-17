@@ -3,6 +3,7 @@ import datetime
 from pathlib import Path
 import pickle
 import time
+from typing import NamedTuple
 from PyQt6 import QtWidgets, QtCore
 
 import vispy
@@ -24,7 +25,9 @@ from monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
 TRAIL_POINTS = 1000
-USE_3D_LINE = False # If true, uses a lower quality GL line renderer that supports 3D lines
+USE_3D_LINE = (
+    False  # If true, uses a lower quality GL line renderer that supports 3D lines
+)
 
 # Recording is only used for testing and evaluation of the system.
 # When enabled the data from the IMU and camera are saved to disk, so they can be replayed
@@ -62,6 +65,19 @@ def get_line_color_from_pressure(pressure: np.ndarray, color=(0, 0, 0)):
     )
 
 
+class CameraUpdateData(NamedTuple):
+    position_replace: list[np.ndarray]
+
+
+class StylusUpdateData(NamedTuple):
+    position: np.ndarray
+    orientation: np.ndarray
+    pressure: float
+
+
+ViewUpdateData = CameraUpdateData | StylusUpdateData
+
+
 class CanvasWrapper:
     def __init__(self):
         self.canvas = SceneCanvas(size=CANVAS_SIZE, keys="interactive")
@@ -94,43 +110,45 @@ class CanvasWrapper:
         # agg looks much better than gl, but only works with 2D data.
         if USE_3D_LINE:
             self.trail_line = visuals.Line(
-                pos=self.line_data_pos, color="black", width=1, parent=self.view_top.scene,
-                method="gl"
+                pos=self.line_data_pos,
+                color="black",
+                width=1,
+                parent=self.view_top.scene,
+                method="gl",
             )
         else:
             self.trail_line = visuals.Line(
-                pos=self.line_data_pos[:,0:2], color="black", width=2, parent=self.view_top.scene,
-                method="agg"
+                pos=self.line_data_pos[:, 0:2],
+                color="black",
+                width=2,
+                parent=self.view_top.scene,
+                method="agg",
             )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
         # This is broken for now, see https://github.com/vispy/vispy/issues/2363
         # grid = scene.visuals.GridLines(parent=self.view_top.scene)
 
-    def update_data(self, new_data_dict: dict):
-        if "orientation" in new_data_dict:
-            orientation = new_data_dict["orientation"]
-            orientation_quat = quaternion.Quaternion(*orientation).inverse()
-            pos = new_data_dict["position"]
-            pressure = new_data_dict["pressure"]
-            self.pen_mesh.transform.matrix = (
-                orientation_quat.get_matrix() @ vispy.util.transforms.translate(pos)
-            )
-            self.line_data_pos = append_line_point(self.line_data_pos, pos)
-            self.line_data_pressure = np.roll(self.line_data_pressure, -1)
-            self.line_data_pressure[-1] = pressure
-            # self.refresh_line()
-        elif "position_replace" in new_data_dict:
-            position_replace: list[np.ndarray] = new_data_dict["position_replace"]
-            if len(position_replace) == 0:
-                return
-            view = self.line_data_pos[-len(position_replace) :, :]
-            view[:,:] = blend_new_data(view, position_replace, 0.5)
-            self.refresh_line()
+    def update_data(self, new_data: ViewUpdateData):
+        match new_data:
+            case StylusUpdateData(position=pos, orientation=orientation, pressure=pressure):
+                orientation_quat = quaternion.Quaternion(*orientation).inverse()
+                self.pen_mesh.transform.matrix = (
+                    orientation_quat.get_matrix() @ vispy.util.transforms.translate(pos)
+                )
+                self.line_data_pos = append_line_point(self.line_data_pos, pos)
+                self.line_data_pressure = np.roll(self.line_data_pressure, -1)
+                self.line_data_pressure[-1] = pressure
+            case CameraUpdateData(position_replace):
+                if len(position_replace) == 0:
+                    return
+                view = self.line_data_pos[-len(position_replace) :, :]
+                view[:, :] = blend_new_data(view, position_replace, 0.5)
+                self.refresh_line()
 
     def refresh_line(self):
         self.trail_line.set_data(
-            self.line_data_pos if USE_3D_LINE else self.line_data_pos[:,0:2],
+            self.line_data_pos if USE_3D_LINE else self.line_data_pos[:, 0:2],
             color=get_line_color_from_pressure(self.line_data_pressure),
         )
 
@@ -166,7 +184,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 class QueueConsumer(QtCore.QObject):
-    new_data = QtCore.pyqtSignal(dict)
+    new_data = QtCore.pyqtSignal(object)
     finished = QtCore.pyqtSignal()
 
     def __init__(
@@ -206,7 +224,7 @@ class QueueConsumer(QtCore.QObject):
                 smoothed_tip_pos = self._filter.update_camera(
                     reading.position.flatten(), reading.orientation_mat
                 )
-                self.new_data.emit({"position_replace": smoothed_tip_pos})
+                self.new_data.emit(CameraUpdateData(position_replace=smoothed_tip_pos))
             except queue.Empty:
                 pass
 
@@ -227,14 +245,14 @@ class QueueConsumer(QtCore.QObject):
                         + reading.pressure * pressure_avg_factor
                     )
                 self.new_data.emit(
-                    {
-                        "position": list(position),
-                        "orientation": list(orientation),
-                        "pressure": (
+                    StylusUpdateData(
+                        position=position,
+                        orientation=orientation,
+                        pressure=(
                             reading.pressure - pressure_baseline - pressure_offset
                         )
                         / pressure_range,
-                    }
+                    )
                 )
 
         print("Queue consumer finishing")
@@ -275,7 +293,9 @@ if __name__ == "__main__":
     queue_consumer.moveToThread(data_thread)
 
     camera_process = mp.Process(
-        target=run_tracker_with_queue, args=(tracker_queue, recording_enabled, recording_timestamp), daemon=False
+        target=run_tracker_with_queue,
+        args=(tracker_queue, recording_enabled, recording_timestamp),
+        daemon=False,
     )
     camera_process.start()
 
