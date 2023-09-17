@@ -285,7 +285,7 @@ def run_tracker(
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -120)
     cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
-    cameraMatrix, distCoeffs = readCameraParameters("camera_params_c922_f30.yml")
+    cameraMatrix, distCoeffs = readCameraParameters("params/camera_params_c922_f30.yml")
     markerPositions = load_marker_positions()
     print("Opening webcam..")
     webcam = getWebcam()

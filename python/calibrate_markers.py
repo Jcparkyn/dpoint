@@ -134,7 +134,7 @@ def calibrate_markers(camera_matrix, dist_coeffs, observations: list[Observation
 
 def main():
     observed_points = get_observed_points(IMAGE_PATH, arucoParams)
-    camera_matrix, dist_coeffs = readCameraParameters("./camera_params_c922_f30.yml")
+    camera_matrix, dist_coeffs = readCameraParameters("./params/camera_params_c922_f30.yml")
     result = calibrate_markers(camera_matrix, dist_coeffs, observed_points)
 
     calibratedMarkerPositions = {

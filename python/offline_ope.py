@@ -22,7 +22,7 @@ def main():
     ) as pickle_file:
         baseRvec, baseTvec = pickle.load(pickle_file)
     camera_data = []
-    cameraMatrix, distCoeffs = readCameraParameters("camera_params_c922_f30.yml")
+    cameraMatrix, distCoeffs = readCameraParameters("params/camera_params_c922_f30.yml")
     markerPositions = load_marker_positions()
 
     tracker = MarkerTracker(cameraMatrix, distCoeffs, markerPositions)

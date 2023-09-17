@@ -1,5 +1,6 @@
 # based on https://github.com/kyle-bersani/opencv-examples/blob/master/CalibrationByCharucoBoard/CalibrateCamera.py
 
+from pathlib import Path
 import numpy
 import cv2
 from cv2 import aruco
@@ -107,8 +108,8 @@ calibration, cameraMatrix, distCoeffs, rvecs, tvecs = aruco.calibrateCameraCharu
 print(cameraMatrix)
 print(distCoeffs)
 
-output_path = "camera_params_c922_f30.yml"
-
+output_path = "./params/camera_params_c922_f30.yml"
+Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 fs = cv2.FileStorage(output_path, cv2.FILE_STORAGE_WRITE)
 if not fs.isOpened():
     raise Exception("Couldn't open file")
