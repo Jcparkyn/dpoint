@@ -67,7 +67,7 @@ bool start_ble() {
 
   BLE.setLocalName("DPOINT");
   BLE.setAdvertisedService(dpointService);
-  BLE.setConnectionInterval(6, 8); // Units of 1.25ms
+  BLE.setConnectionInterval(6, 6); // Units of 1.25ms
 
   imuCharacteristic.addDescriptor(imuDescriptor);
 
@@ -91,14 +91,14 @@ void run_ble(BLEDevice central) {
   while (central.connected()) {
     unsigned long startTime = millis();
     IMUDataPacket packet;
+
+    packet.pressure = pressureIn.read_u16();
     packet.accel[0] = myIMU.readRawAccelX();
     packet.accel[1] = myIMU.readRawAccelY();
     packet.accel[2] = myIMU.readRawAccelZ();
     packet.gyro[0] = myIMU.readRawGyroX();
     packet.gyro[1] = myIMU.readRawGyroY();
     packet.gyro[2] = myIMU.readRawGyroZ();
-
-    packet.pressure = pressureIn.read_u16();
     
     imuCharacteristic.writeValue(packet);
 
@@ -134,6 +134,7 @@ void setup() {
   digitalWrite(LEDB, HIGH);
 
   Wire1.setClock(400000UL);
+  // Serial.begin(19200);
   setupPressureSensor();
 }
 
