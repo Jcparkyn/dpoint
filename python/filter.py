@@ -27,20 +27,20 @@ from filter_core import (
 Mat = npt.NDArray[np.float64]
 
 additive_noise = np.zeros(STATE_SIZE)
-additive_noise[i_pos] = 0
-additive_noise[i_vel] = 1e-4
-additive_noise[i_acc] = 200
+additive_noise[i_pos] = 1e-6
+additive_noise[i_vel] = 4e-4
+additive_noise[i_acc] = 100
 additive_noise[i_av] = 50
-additive_noise[i_quat] = 2e-4
-additive_noise[i_accbias] = 1e-4
-additive_noise[i_gyrobias] = 2e-5
+additive_noise[i_quat] = 1e-5
+additive_noise[i_accbias] = 0.5e-4
+additive_noise[i_gyrobias] = 1e-5
 Q = np.diag(additive_noise)
 
 accel_noise = 2e-3
 gyro_noise = 5e-4
 imu_noise = np.diag([accel_noise] * 3 + [gyro_noise] * 3)
-camera_noise_pos = 0.1e-5
-camera_noise_or = 0.5e-4
+camera_noise_pos = 1e-6
+camera_noise_or = 1e-4
 camera_noise = np.diag([camera_noise_pos] * 3 + [camera_noise_or] * 4)
 
 
