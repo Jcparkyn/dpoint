@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import struct
 from typing import NamedTuple
 from bleak import BleakClient, BleakScanner
@@ -8,23 +9,38 @@ import multiprocessing as mp
 import numpy as np
 
 
-class StylusReading(NamedTuple):
+@dataclass
+class StylusReading:
     accel: np.ndarray
     gyro: np.ndarray
-    t: int
     pressure: float
+
+    def format_aligned(self):
+        return f"p={self.pressure:<8.5f}: |a|={np.linalg.norm(self.accel):<7.3f} a={self.accel}, g={self.gyro}"
 
 
 class StopCommand(NamedTuple):
     pass
 
 
+def calc_accel(a):
+    """Remap raw accelerometer measurements to Gs."""
+    accel_range = 4  # Should match settings.accelRange in microcontroller code
+    return a * 0.061 * (accel_range / 2) / 1000
+
+
+def calc_gyro(g):
+    """Remap raw gyro measurements to degrees per second."""
+    gyro_range = 500  # Should match settings.gyroRange in microcontroller code
+    return g * 4.375 * (gyro_range / 125) / 1000
+
+
 def unpack_imu_data_packet(data: bytearray):
     """Unpacks an IMUDataPacket struct from the given data buffer."""
-    ax, ay, az, gx, gy, gz, t, pressure = struct.unpack("<6fIHxx", data)
-    accel = np.array([ax, ay, az], dtype=np.float32) * 9.8
-    gyro = np.array([gx, gy, gz], dtype=np.float32) * np.pi / 180.0
-    return StylusReading(accel, gyro, t, pressure / 2**16)
+    ax, ay, az, gx, gy, gz, pressure = struct.unpack("<3h3hH", data)
+    accel = calc_accel(np.array([ax, ay, az], dtype=np.float64) * 9.8)
+    gyro = calc_gyro(np.array([gx, gy, gz], dtype=np.float64) * np.pi / 180.0)
+    return StylusReading(accel, gyro, pressure / 2**16)
 
 
 characteristic = "19B10013-E8F2-537E-4F6C-D104768A1214"

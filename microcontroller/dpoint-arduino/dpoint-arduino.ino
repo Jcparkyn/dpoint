@@ -1,6 +1,7 @@
 #include <LSM6DS3.h>
 #include <ArduinoBLE.h>
 #include "mbed.h"
+#include "Wire.h"
 
 mbed::AnalogIn pressureIn(AIN4);
 analogin_config_t adcConfig = {
@@ -20,10 +21,9 @@ const unsigned long rate = 120; // samples per second
 const unsigned long delayMs = 1000/rate;
 
 struct IMUDataPacket {
-  float accel[3];
-  float gyro[3];
-  uint32_t time;
-  unsigned short pressure;
+  int16_t accel[3];
+  int16_t gyro[3];
+  uint16_t pressure;
 };
 
 BLEService dpointService("19B10010-E8F2-537E-4F6C-D104768A1214");
@@ -67,7 +67,7 @@ bool start_ble() {
 
   BLE.setLocalName("DPOINT");
   BLE.setAdvertisedService(dpointService);
-  BLE.setConnectionInterval(6, 8);
+  BLE.setConnectionInterval(6, 8); // Units of 1.25ms
 
   imuCharacteristic.addDescriptor(imuDescriptor);
 
@@ -90,21 +90,16 @@ unsigned long stayAwakeTime = 1000*30; // milliseconds
 void run_ble(BLEDevice central) {
   while (central.connected()) {
     unsigned long startTime = millis();
+    IMUDataPacket packet;
+    packet.accel[0] = myIMU.readRawAccelX();
+    packet.accel[1] = myIMU.readRawAccelY();
+    packet.accel[2] = myIMU.readRawAccelZ();
+    packet.gyro[0] = myIMU.readRawGyroX();
+    packet.gyro[1] = myIMU.readRawGyroY();
+    packet.gyro[2] = myIMU.readRawGyroZ();
 
-    float aX = myIMU.readFloatAccelX();
-    float aY = myIMU.readFloatAccelY();
-    float aZ = myIMU.readFloatAccelZ();
-    float gX = myIMU.readFloatGyroX();
-    float gY = myIMU.readFloatGyroY();
-    float gZ = myIMU.readFloatGyroZ();
-    unsigned short pressure = pressureIn.read_u16();
+    packet.pressure = pressureIn.read_u16();
     
-    IMUDataPacket packet = {
-      .accel = {aX, aY, aZ},
-      .gyro = {gX, gY, gZ},
-      .time = startTime,
-      .pressure = pressure,
-    };
     imuCharacteristic.writeValue(packet);
 
     unsigned long time = millis() - startTime;
@@ -138,6 +133,7 @@ void setup() {
   digitalWrite(LEDG, HIGH);
   digitalWrite(LEDB, HIGH);
 
+  Wire1.setClock(400000UL);
   setupPressureSensor();
 }
 
