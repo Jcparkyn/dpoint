@@ -76,8 +76,7 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                     start = sample - len(smoothed_tip_pos) + 1
                     tps_view = tip_pos_smoothed[start : sample + 1, :]
                     tps_view[:,:] = blend_new_data(tps_view, smoothed_tip_pos, 0.5)
-            case StylusReading(accel, gyro, _, p):
-                # print(f"t: {t}, accel: {accel}, gyro: {gyro}, pressure: {p}")
+            case StylusReading(accel=accel, gyro=gyro, t=_, pressure=p):
                 filter.update_imu(accel, gyro)
                 position, orientation = filter.get_tip_pose()
                 zpos = position[2]

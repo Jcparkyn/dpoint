@@ -9,10 +9,10 @@ import multiprocessing as mp
 import numpy as np
 
 
-@dataclass
-class StylusReading:
+class StylusReading(NamedTuple):
     accel: np.ndarray
     gyro: np.ndarray
+    t: int
     pressure: float
 
     def format_aligned(self):
@@ -40,7 +40,7 @@ def unpack_imu_data_packet(data: bytearray):
     ax, ay, az, gx, gy, gz, pressure = struct.unpack("<3h3hH", data)
     accel = calc_accel(np.array([ax, ay, az], dtype=np.float64) * 9.8)
     gyro = calc_gyro(np.array([gx, gy, gz], dtype=np.float64) * np.pi / 180.0)
-    return StylusReading(accel, gyro, pressure / 2**16)
+    return StylusReading(accel, gyro, 0, pressure / 2**16)
 
 
 characteristic = "19B10013-E8F2-537E-4F6C-D104768A1214"
