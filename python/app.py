@@ -197,7 +197,7 @@ class QueueConsumer(QtCore.QObject):
         self._should_end = False
         self._tracker_queue = tracker_queue
         self._imu_queue = imu_queue
-        self._filter = DpointFilter(dt=1 / 120)
+        self._filter = DpointFilter(dt=1 / 130, smoothing_length=8, camera_delay=5)
         self._recorded_data = []
 
     def run_queue_consumer(self):

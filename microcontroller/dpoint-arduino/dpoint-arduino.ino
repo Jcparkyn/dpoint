@@ -17,8 +17,8 @@ analogin_config_t adcConfig = {
 };
 #define PRESSURE_SENSOR_VCC_PIN D1
 
-const unsigned long rate = 120; // samples per second
-const unsigned long delayMs = 1000/rate;
+const unsigned long delayMs = 7;
+const unsigned long rate = 1000/delayMs;
 
 struct IMUDataPacket {
   int16_t accel[3];
@@ -36,7 +36,7 @@ LSM6DS3 myIMU(I2C_MODE, 0x6A); //I2C device address 0x6A
 void setupPressureSensor() {
   pinMode(PRESSURE_SENSOR_VCC_PIN, OUTPUT);
   digitalWrite(PRESSURE_SENSOR_VCC_PIN, HIGH);
-  nrf_saadc_oversample_set(NRF_SAADC_OVERSAMPLE_32X);
+  nrf_saadc_oversample_set(NRF_SAADC_OVERSAMPLE_16X);
   nrf_saadc_resolution_set(NRF_SAADC_RESOLUTION_12BIT);
   pressureIn.configure(adcConfig);
 }

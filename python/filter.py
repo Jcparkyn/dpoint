@@ -97,7 +97,7 @@ def blend_new_data(old: np.ndarray, new: np.ndarray, alpha: float):
 class DpointFilter:
     history: Deque[HistoryItem]
 
-    def __init__(self, dt, smoothing_length=8, camera_delay=4):
+    def __init__(self, dt, smoothing_length: int, camera_delay: int):
         self.history = deque()
         self.fs = initial_state()
         self.dt = dt
