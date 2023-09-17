@@ -1,3 +1,4 @@
+import json
 import math
 from pathlib import Path
 import os
@@ -71,6 +72,7 @@ def getArucoParams():
     arucoParams.minMarkerPerimeterRate = 0.02
     arucoParams.maxMarkerPerimeterRate = 0.5
     arucoParams.minSideLengthCanonicalImg = 16
+    arucoParams.adaptiveThreshConstant = 7
     return arucoParams
 
 
@@ -262,8 +264,9 @@ focus_targets = np.array(
 
 def load_marker_positions():
     try:
-        with open("calibratedMarkerPositions.pkl", "rb") as f:
-            return pickle.load(f)
+        with open("./params/calibrated_marker_positions.json", "r") as f:
+            pos_json = json.load(f)
+            return {int(k): np.array(v) for k, v in pos_json.items()}
     except:
         print("Couldn't load calibrated marker positions, using ideal positions")
     return idealMarkerPositions
@@ -276,8 +279,8 @@ def get_focus_target(dist_to_camera):
 
 def run_tracker(
     on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]],
-    recording_enabled: mp.Value,
-    recording_timestamp: str,
+    recording_enabled: Optional[mp.Value] = None,
+    recording_timestamp: str = "",
 ):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -120)
@@ -396,7 +399,7 @@ def run_tracker(
 
         cv2.imshow("Tracker", frame)
 
-        if recording_enabled.value:
+        if recording_enabled and recording_enabled.value:
             timestamp = time.time_ns() // 1_000_000
             dir = f"recordings/{recording_timestamp}/frames"
             Path(dir).mkdir(parents=True, exist_ok=True)

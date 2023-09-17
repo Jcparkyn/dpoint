@@ -2,7 +2,8 @@
 # The images should be taken with the pen in a variety of poses, and each image should contain at least two markers.
 # The calibrated positions are stored OUTPUT_PATH
 
-import pickle
+import json
+from pathlib import Path
 import numpy as np
 import cv2
 import glob
@@ -14,7 +15,7 @@ from dimensions import idealMarkerPositions
 MARKER_COUNT = 8  # The number of markers on the pen
 FIRST_MARKER_ID = 92  # ID of the first marker on the pen, used to convert IDs to 0-n.
 IMAGE_PATH = "./marker_calibration_pics/f30/*.jpg"
-OUTPUT_PATH = "./calibratedMarkerPositions.pkl"
+OUTPUT_PATH = "./params/calibrated_marker_positions.json"
 
 
 Observation = dict[int, np.ndarray]  # Map from marker id to 4x3 array of corners
@@ -137,10 +138,12 @@ def main():
     result = calibrate_markers(camera_matrix, dist_coeffs, observed_points)
 
     calibratedMarkerPositions = {
-        i + FIRST_MARKER_ID: result[i, :, :] for i in range(MARKER_COUNT)
+        i + FIRST_MARKER_ID: result[i, :, :].tolist() for i in range(MARKER_COUNT)
     }
-    with open(OUTPUT_PATH, "wb") as f:
-        pickle.dump(calibratedMarkerPositions, f)
+    file = Path(OUTPUT_PATH)
+    file.parent.mkdir(parents=True, exist_ok=True)
+    with file.open("w") as f:
+        json.dump(calibratedMarkerPositions, f, indent=2)
 
 
 if __name__ == "__main__":

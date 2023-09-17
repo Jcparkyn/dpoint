@@ -7,5 +7,5 @@ __pycache__
 *.received.txt
 
 !pen.obj
-calibratedMarkerPositions.pkl
 marker_calibration_pics/**/*.jpg
+params/calibrated_marker_positions.json
