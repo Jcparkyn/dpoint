@@ -94,7 +94,7 @@ class CanvasWrapper:
             azimuth=0,
             scale_factor=0.3,
         )
-        vertices, faces, normals, texcoords = read_mesh("pen.obj")
+        vertices, faces, normals, texcoords = read_mesh("./mesh/pen.obj")
         self.pen_mesh = visuals.Mesh(
             vertices, faces, color=(1, 0.5, 0.5, 1), parent=self.view_top.scene
         )
