@@ -9,3 +9,8 @@ __pycache__
 !pen.obj
 marker_calibration_pics/**/*.jpg
 params/calibrated_marker_positions.json
+
+recordings/*/frames
+recordings/*/*.pdf
+recordings/*/*.pkl
+!recordings/*/camera_extrinsics.pkl
