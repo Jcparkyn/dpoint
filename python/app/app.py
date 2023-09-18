@@ -258,7 +258,7 @@ class QueueConsumer(QtCore.QObject):
 
         print("Queue consumer finishing")
 
-        if self._recorded_data:
+        if self._recorded_data_stylus:
             file1 = Path(f"recordings/{recording_timestamp}/stylus_data.json")
             file1.parent.mkdir(parents=True, exist_ok=True)
             with file1.open("x") as f:
