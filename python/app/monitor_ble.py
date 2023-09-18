@@ -16,6 +16,22 @@ class StylusReading(NamedTuple):
 
     def format_aligned(self):
         return f"p={self.pressure:<8.5f}: |a|={np.linalg.norm(self.accel):<7.3f} a={self.accel}, g={self.gyro}"
+    
+    def to_json(self):
+        return {
+            "accel": self.accel.tolist(),
+            "gyro": self.gyro.tolist(),
+            "t": self.t,
+            "pressure": self.pressure
+        }
+    
+    def from_json(dict):
+        return StylusReading(
+            np.array(dict["accel"]),
+            np.array(dict["gyro"]),
+            dict["t"],
+            dict["pressure"]
+        )
 
 
 class StopCommand(NamedTuple):

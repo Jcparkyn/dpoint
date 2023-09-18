@@ -1,7 +1,7 @@
 # Parts of this file were scaffolded from https://github.com/vispy/vispy/blob/main/examples/scene/realtime_data/ex03b_data_sources_threaded_loop.py
 import datetime
+import json
 from pathlib import Path
-import pickle
 import time
 from typing import NamedTuple
 from PyQt6 import QtWidgets, QtCore
@@ -198,7 +198,8 @@ class QueueConsumer(QtCore.QObject):
         self._tracker_queue = tracker_queue
         self._imu_queue = imu_queue
         self._filter = DpointFilter(dt=1 / 130, smoothing_length=8, camera_delay=5)
-        self._recorded_data = []
+        self._recorded_data_stylus = []
+        self._recorded_data_camera = []
 
     def run_queue_consumer(self):
         print("Queue consumer is starting")
@@ -219,7 +220,7 @@ class QueueConsumer(QtCore.QObject):
                     self._tracker_queue.get()
                 reading = self._tracker_queue.get_nowait()
                 if recording_enabled.value:
-                    self._recorded_data.append((time.time_ns() // 1_000_000, reading))
+                    self._recorded_data_camera.append((time.time_ns() // 1_000_000, reading))
                 samples_since_camera = 0
                 smoothed_tip_pos = self._filter.update_camera(
                     reading.position.flatten(), reading.orientation_mat
@@ -234,7 +235,7 @@ class QueueConsumer(QtCore.QObject):
                 if samples_since_camera > 10:
                     continue
                 if recording_enabled.value:
-                    self._recorded_data.append((time.time_ns() // 1_000_000, reading))
+                    self._recorded_data_stylus.append((time.time_ns() // 1_000_000, reading))
                 self._filter.update_imu(reading.accel, reading.gyro)
                 position, orientation = self._filter.get_tip_pose()
                 zpos = position[2]
@@ -258,10 +259,13 @@ class QueueConsumer(QtCore.QObject):
         print("Queue consumer finishing")
 
         if self._recorded_data:
-            file = Path(f"recordings/{recording_timestamp}/stylus_data.pkl")
-            file.parent.mkdir(parents=True, exist_ok=True)
-            with file.open("xb") as f:
-                pickle.dump(self._recorded_data, f)
+            file1 = Path(f"recordings/{recording_timestamp}/stylus_data.json")
+            file1.parent.mkdir(parents=True, exist_ok=True)
+            with file1.open("x") as f:
+                json.dump([ dict(t=t, data=reading.to_json()) for t, reading in self._recorded_data_stylus], f)
+            file2 = Path(f"recordings/{recording_timestamp}/camera_data_original.json")
+            with file2.open("x") as f:
+                json.dump([ dict(t=t, data=reading.to_json()) for t, reading in self._recorded_data_camera], f)
 
         self.finished.emit()
 

@@ -1,4 +1,5 @@
 import glob
+import json
 import ntpath
 import pickle
 
@@ -38,9 +39,9 @@ def main():
             Rrelative = cv2.Rodrigues(rvecRelative)[0]
             camera_data.append((frame_time, CameraReading(tvecRelative, Rrelative)))
     with open(
-        f"recordings/{recording_timestamp}/camera_data.pkl", "wb"
-    ) as pickle_file:
-        pickle.dump(camera_data, pickle_file)
+        f"recordings/{recording_timestamp}/camera_data.json", "w"
+    ) as f:
+        json.dump([dict(t=t, data=reading.to_json()) for t, reading in camera_data], f, indent=2)
 
 
 if __name__ == "__main__":

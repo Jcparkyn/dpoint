@@ -138,7 +138,7 @@ def resample_line(points, desired_distance, mask):
 def merge_data(
     stylus_data: list, camera_data: list
 ) -> list[tuple[float, CameraReading | StylusReading]]:
-    result = [x for x in stylus_data if isinstance(x[1], StylusReading)] + camera_data
+    result = stylus_data + camera_data
     result.sort(key=lambda x: x[0])
     return result
 

@@ -20,6 +20,18 @@ class CameraReading(NamedTuple):
     position: np.ndarray
     orientation_mat: np.ndarray
 
+    def to_json(self):
+        return {
+            "position": self.position.tolist(),
+            "orientation_mat": self.orientation_mat.tolist()
+        }
+    
+    def from_json(dict):
+        return CameraReading(
+            np.array(dict["position"]),
+            np.array(dict["orientation_mat"])
+        )
+
 
 def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
     fs = cv2.FileStorage(filename, cv2.FILE_STORAGE_READ)
