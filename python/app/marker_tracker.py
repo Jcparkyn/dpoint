@@ -14,6 +14,7 @@ import multiprocessing as mp
 from app.dimensions import IMU_OFFSET, STYLUS_LENGTH, idealMarkerPositions
 
 RECORD_DATA = True
+FPS = 30
 
 
 class CameraReading(NamedTuple):
@@ -23,13 +24,12 @@ class CameraReading(NamedTuple):
     def to_json(self):
         return {
             "position": self.position.tolist(),
-            "orientation_mat": self.orientation_mat.tolist()
+            "orientation_mat": self.orientation_mat.tolist(),
         }
-    
+
     def from_json(dict):
         return CameraReading(
-            np.array(dict["position"]),
-            np.array(dict["orientation_mat"])
+            np.array(dict["position"]), np.array(dict["orientation_mat"])
         )
 
 
@@ -182,6 +182,22 @@ def solve_pnp(
     return (success, rvec, tvec)
 
 
+MarkerDict = dict[int, tuple[np.ndarray, np.ndarray]]
+
+
+def detect_markers_bounded(
+    detector, frame: np.ndarray, x0: int, x1: int, y0: int, y1: int
+):
+    x0, y0 = max(x0, 0), max(y0, 0)
+    frame_view = frame[y0:y1, x0:x1]
+    allCornersIS, ids, rejected = detector.detectMarkers(frame_view)
+    if ids is not None:
+        for i in range(ids.shape[0]):
+            allCornersIS[i][0, :, 0] += x0
+            allCornersIS[i][0, :, 1] += y0
+    return allCornersIS, ids, rejected
+
+
 class MarkerTracker:
     def __init__(
         self,
@@ -195,14 +211,44 @@ class MarkerTracker:
         self.tvec: Optional[np.ndarray] = None
         self.initialized = False
         self.markerPositions = markerPositions
-        self.lastValidMarkers = {}
-        pass
+        self.lastValidMarkers: MarkerDict = {}
+        self.next_search_area: Optional[tuple[int]] = None
+
+    @staticmethod
+    def get_search_area(velocity: np.array, validMarkers: MarkerDict):
+        """Returns a bounding box to search in the next frame, based on the current marker positions and velocity."""
+        all_corners = np.concatenate(
+            [cornersIS for _, cornersIS in validMarkers.values()]
+        )
+
+        def minmax(x):
+            return np.min(x), np.max(x)
+
+        x0, x1 = minmax(all_corners[:, 0] + velocity[0] / FPS)
+        y0, y1 = minmax(all_corners[:, 1] + velocity[1] / FPS)
+        w = x1 - x0
+        h = y1 - y0
+        # Amount to expand each axis by, in pixels. This is just a rough heuristic, and the constants are arbitrary.
+        expand = 0.7 * max(w + h, 350) + 1.0 * velocity / FPS
+        return (
+            int(x0 - expand[0]),
+            int(x1 + expand[0]),
+            int(y0 - expand[1]),
+            int(y1 + expand[1]),
+        )
 
     def process_frame(self, frame: np.ndarray):
         ids: np.ndarray
-        allCornersIS, ids, rejected = detector.detectMarkers(frame)
+        if self.next_search_area is None:
+            allCornersIS, ids, rejected = detector.detectMarkers(frame)
+        else:
+            x0, x1, y0, y1 = self.next_search_area
+            cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 100, 0, 0.3), 2)
+            allCornersIS, ids, rejected = detect_markers_bounded(
+                detector, frame, x0, x1, y0, y1
+            )
         aruco.drawDetectedMarkers(frame, allCornersIS, ids)
-        validMarkers = {}
+        validMarkers: MarkerDict = {}
         if ids is not None:
             for i in range(ids.shape[0]):
                 # cornersIS is 4x2
@@ -214,6 +260,7 @@ class MarkerTracker:
         if len(validMarkers) < 1:
             self.initialized = False
             self.lastValidMarkers = {}
+            self.next_search_area = None
             return None
 
         pointDeltas = []
@@ -224,10 +271,15 @@ class MarkerTracker:
 
         if pointDeltas:
             meanVelocity = np.mean(pointDeltas, axis=0) * 30  # px/second
+        else:
+            meanVelocity = np.zeros(2)
+
         meanPositionIS = np.mean(
             [cornersIS for _, cornersIS in validMarkers.values()],
             axis=(0, 1),
         )
+
+        self.next_search_area = self.get_search_area(meanVelocity, validMarkers)
 
         screenCorners = []
         penCorners = []
@@ -273,6 +325,7 @@ focus_targets = np.array(
         [0.5, 25],
     ]
 )
+
 
 def load_marker_positions():
     try:
@@ -348,6 +401,7 @@ def run_tracker(
             )
 
         result = tracker.process_frame(frame)
+        processingEndTime = time.perf_counter()
         if result is not None:
             rvec, tvec = result
             rvecRelative, tvecRelative = relativeTransform(
@@ -394,7 +448,7 @@ def run_tracker(
         )
         cv2.putText(
             frame,
-            f"Processing: {(frameEndTime - processingStartTime)*1000:.1f}ms",
+            f"Processing: {(processingEndTime - processingStartTime)*1000:.1f}ms",
             (10, 60),
             cv2.FONT_HERSHEY_DUPLEX,
             1,
