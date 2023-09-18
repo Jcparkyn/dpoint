@@ -1,3 +1,6 @@
+import sys
+sys.path.append('.')
+
 import glob
 import json
 import ntpath

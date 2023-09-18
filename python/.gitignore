@@ -7,10 +7,12 @@ __pycache__
 *.received.txt
 
 !pen.obj
-marker_calibration_pics/**/*.jpg
+marker_calibration_pics/
 params/calibrated_marker_positions.json
 
 recordings/*/frames
 recordings/*/*.pdf
 recordings/*/*.pkl
 !recordings/*/camera_extrinsics.pkl
+
+analysis/tip_measurements/**/*.pdf
