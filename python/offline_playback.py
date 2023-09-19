@@ -1,3 +1,4 @@
+import time
 from typing import NamedTuple
 
 import numpy as np
@@ -60,12 +61,16 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
     tip_pos_cameraonly = []
     pressure_cameraonly = []
 
+    camera_fuse_times = []
+    stylus_fuse_times = []
+
     pressure_baseline = 0.017  # Approximate measured value for initial estimate
     pressure_avg_factor = 0.1  # Factor for exponential moving average
     pressure_range = 0.02
     pressure_offset = 0.003  # Offset so that small positive numbers are treated as zero
     sample = 0
     for t, reading in recorded_data:
+        t0 = time.perf_counter()
         match reading:
             case CameraReading(pos, or_mat):
                 # print(f"t: {t}, pos: {pos}, or_mat: {or_mat}")
@@ -76,6 +81,7 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                     start = sample - len(smoothed_tip_pos) + 1
                     tps_view = tip_pos_smoothed[start : sample + 1, :]
                     tps_view[:,:] = blend_new_data(tps_view, smoothed_tip_pos, 0.5)
+                camera_fuse_times.append(time.perf_counter() - t0)
             case StylusReading(accel=accel, gyro=gyro, t=_, pressure=p):
                 filter.update_imu(accel, gyro)
                 position, orientation = filter.get_tip_pose()
@@ -91,7 +97,12 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                 pressure[sample] = (
                     p - pressure_baseline - pressure_offset
                 ) / pressure_range
+                stylus_fuse_times.append(time.perf_counter() - t0)
                 sample += 1
+    camera_fuse_times = np.array(camera_fuse_times)*1000
+    stylus_fuse_times = np.array(stylus_fuse_times)*1000
+    print(f"Camera: {np.mean(camera_fuse_times):.3f}ms +- {np.std(camera_fuse_times):.3f}")
+    print(f"Stylus: {np.mean(stylus_fuse_times):.3f}ms +- {np.std(stylus_fuse_times):.3f}")
     return tip_pos_predicted, tip_pos_smoothed, pressure, np.row_stack(tip_pos_cameraonly), np.array(pressure_cameraonly)
 
 
