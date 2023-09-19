@@ -15,6 +15,8 @@ from app.dimensions import IMU_OFFSET, STYLUS_LENGTH, idealMarkerPositions
 
 RECORD_DATA = True
 FPS = 30
+FRAME_WIDTH = 1920
+FRAME_HEIGHT = 1080
 
 
 class CameraReading(NamedTuple):
@@ -46,8 +48,8 @@ def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
 def getWebcam():
     webcam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     webcam.set(cv2.CAP_PROP_FPS, 60)
-    webcam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    webcam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+    webcam.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+    webcam.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     if not webcam.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG")):
         raise Exception("Couldn't set FourCC")
     webcam.set(cv2.CAP_PROP_AUTOFOCUS, 0)
@@ -82,7 +84,7 @@ def getArucoParams():
     arucoParams.adaptiveThreshWinSizeMax = 15
     arucoParams.useAruco3Detection = False
     arucoParams.minMarkerPerimeterRate = 0.02
-    arucoParams.maxMarkerPerimeterRate = 0.5
+    arucoParams.maxMarkerPerimeterRate = 2
     arucoParams.minSideLengthCanonicalImg = 16
     arucoParams.adaptiveThreshConstant = 7
     return arucoParams
@@ -198,6 +200,14 @@ def detect_markers_bounded(
     return allCornersIS, ids, rejected
 
 
+def bounds(x):
+    return np.min(x), np.max(x)
+
+
+def clamp(x, xmin, xmax):
+    return max(min(x, xmax), xmin)
+
+
 class MarkerTracker:
     def __init__(
         self,
@@ -211,42 +221,47 @@ class MarkerTracker:
         self.tvec: Optional[np.ndarray] = None
         self.initialized = False
         self.markerPositions = markerPositions
+        self.allObjectPoints = np.concatenate(list(markerPositions.values()))
         self.lastValidMarkers: MarkerDict = {}
-        self.next_search_area: Optional[tuple[int]] = None
+        self.lastVelocity = np.zeros(2)
 
-    @staticmethod
-    def get_search_area(velocity: np.array, validMarkers: MarkerDict):
+    def get_search_area(self, rvec: np.ndarray, tvec: np.ndarray, velocity: np.array):
         """Returns a bounding box to search in the next frame, based on the current marker positions and velocity."""
-        all_corners = np.concatenate(
-            [cornersIS for _, cornersIS in validMarkers.values()]
+
+        # Re-project all object points, to avoid cases where some markers were missed in the previous frame.
+        projectedImagePoints, _ = cv2.projectPoints(
+            self.allObjectPoints, rvec, tvec, self.cameraMatrix, self.distCoeffs, None
         )
+        projectedImagePoints = projectedImagePoints[:, 0, :]
 
-        def minmax(x):
-            return np.min(x), np.max(x)
-
-        x0, x1 = minmax(all_corners[:, 0] + velocity[0] / FPS)
-        y0, y1 = minmax(all_corners[:, 1] + velocity[1] / FPS)
+        x0, x1 = bounds(projectedImagePoints[:, 0] + velocity[0] / FPS)
+        y0, y1 = bounds(projectedImagePoints[:, 1] + velocity[1] / FPS)
         w = x1 - x0
         h = y1 - y0
+
         # Amount to expand each axis by, in pixels. This is just a rough heuristic, and the constants are arbitrary.
-        expand = 0.7 * max(w + h, 350) + 1.0 * velocity / FPS
+        expand = max(0.5 * (w + h), 200) + 1.0 * np.abs(velocity) / FPS
+
+        # Values are sometimes extremely large if tvec is wrong, clamp is a workaround to stop cv2.rectangle from breaking.
         return (
-            int(x0 - expand[0]),
-            int(x1 + expand[0]),
-            int(y0 - expand[1]),
-            int(y1 + expand[1]),
+            int(clamp(x0 - expand[0], 0, FRAME_WIDTH)),
+            int(clamp(x1 + expand[0], 0, FRAME_WIDTH)),
+            int(clamp(y0 - expand[1], 0, FRAME_HEIGHT)),
+            int(clamp(y1 + expand[1], 0, FRAME_HEIGHT)),
         )
 
     def process_frame(self, frame: np.ndarray):
         ids: np.ndarray
-        if self.next_search_area is None:
-            allCornersIS, ids, rejected = detector.detectMarkers(frame)
-        else:
-            x0, x1, y0, y1 = self.next_search_area
+        if self.initialized:
+            x0, x1, y0, y1 = self.get_search_area(
+                self.rvec, self.tvec, self.lastVelocity
+            )
             cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 100, 0, 0.3), 2)
             allCornersIS, ids, rejected = detect_markers_bounded(
                 detector, frame, x0, x1, y0, y1
             )
+        else:
+            allCornersIS, ids, rejected = detector.detectMarkers(frame)
         aruco.drawDetectedMarkers(frame, allCornersIS, ids)
         validMarkers: MarkerDict = {}
         if ids is not None:
@@ -279,8 +294,6 @@ class MarkerTracker:
             axis=(0, 1),
         )
 
-        self.next_search_area = self.get_search_area(meanVelocity, validMarkers)
-
         screenCorners = []
         penCorners = []
         delayPerImageRow = 1 / 30 / 1080  # seconds/row
@@ -310,6 +323,7 @@ class MarkerTracker:
         )
 
         self.lastValidMarkers = validMarkers
+        self.lastVelocity = meanVelocity
         return (self.rvec, self.tvec)
 
 
