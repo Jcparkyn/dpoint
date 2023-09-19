@@ -408,11 +408,14 @@ def run_tracker(
         processingStartTime = time.perf_counter()
 
         if not calibrated or keypress == ord("c"):
-            calibrated = True
             print("Calibrating...")
-            baseRvec, baseTvec = estimate_camera_pose_charuco(
-                frame, cameraMatrix, distCoeffs
-            )
+            try:
+                baseRvec, baseTvec = estimate_camera_pose_charuco(
+                    frame, cameraMatrix, distCoeffs
+                )
+                calibrated = True
+            except Exception as e:
+                print("Error calibrating camera, press C to retry.", e)
 
         result = tracker.process_frame(frame)
         processingEndTime = time.perf_counter()
