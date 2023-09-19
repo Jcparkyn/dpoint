@@ -1,4 +1,5 @@
 import sys
+import time
 sys.path.append('.')
 
 import glob
@@ -30,9 +31,12 @@ def main():
     markerPositions = load_marker_positions()
 
     tracker = MarkerTracker(cameraMatrix, distCoeffs, markerPositions)
+    startTime = time.perf_counter()
+    processingTimes = []
     for file in files:
         frame_time = int(ntpath.basename(file).split(".")[0])
         frame = cv2.imread(file)
+        processingStartTime = time.perf_counter()
         result = tracker.process_frame(frame)
         if result is not None:
             rvec, tvec = result
@@ -41,6 +45,16 @@ def main():
             )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]
             camera_data.append((frame_time, CameraReading(tvecRelative, Rrelative)))
+        processingEndTime = time.perf_counter()
+        processingTimes.append(processingEndTime - processingStartTime)
+    endTime = time.perf_counter()
+    totalProcessingTime = sum(processingTimes)
+    totalTime = endTime - startTime
+
+    print(f"Time per frame: {totalTime / len(files)}, processing only: {totalProcessingTime / len(files)}")
+    # with open(f"recordings/{recording_timestamp}/camera_timing.json", "w") as f:
+    #     json.dump(processingTimes, f)
+
     with open(
         f"recordings/{recording_timestamp}/camera_data.json", "w"
     ) as f:
