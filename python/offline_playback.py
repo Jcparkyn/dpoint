@@ -99,6 +99,8 @@ def replay_data(recorded_data: list[tuple[float, CameraReading | StylusReading]]
                 ) / pressure_range
                 stylus_fuse_times.append(time.perf_counter() - t0)
                 sample += 1
+            case _:
+                print("Invalid reading", reading)
     camera_fuse_times = np.array(camera_fuse_times)*1000
     stylus_fuse_times = np.array(stylus_fuse_times)*1000
     print(f"Camera: {np.mean(camera_fuse_times):.3f}ms +- {np.std(camera_fuse_times):.3f}")
