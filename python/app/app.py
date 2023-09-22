@@ -85,7 +85,7 @@ class CanvasWrapper:
         self.canvas.connect(self.on_key_press)
         self.grid = self.canvas.central_widget.add_grid()
 
-        self.view_top = self.grid.add_view(0, 0, bgcolor="grey")
+        self.view_top = self.grid.add_view(0, 0, bgcolor="white")
         self.view_top.camera = scene.TurntableCamera(
             up="z",
             fov=0,
@@ -96,13 +96,13 @@ class CanvasWrapper:
         )
         vertices, faces, normals, texcoords = read_mesh("./mesh/pen.obj")
         self.pen_mesh = visuals.Mesh(
-            vertices, faces, color=(1, 0.5, 0.5, 1), parent=self.view_top.scene
+            vertices, faces, color=(0.8, 0.8, 0.8, 1), parent=self.view_top.scene
         )
         self.pen_mesh.transform = transforms.MatrixTransform()
 
         pen_tip = visuals.XYZAxis(parent=self.pen_mesh)
         pen_tip.transform = transforms.MatrixTransform(
-            vispy.util.transforms.scale([0.02, 0.02, 0.02])
+            vispy.util.transforms.scale([0.01, 0.01, 0.01])
         )
 
         self.line_data_pos = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
