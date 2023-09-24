@@ -12,8 +12,8 @@ from app.marker_tracker import (
     CameraReading,
     MarkerTracker,
     load_marker_positions,
-    readCameraParameters,
-    relativeTransform,
+    read_camera_parameters,
+    relative_transform,
 )
 
 # This script pre-computes a list of estimated stylus poses from a set of frames.
@@ -27,7 +27,7 @@ def main():
     ) as pickle_file:
         baseRvec, baseTvec = pickle.load(pickle_file)
     camera_data = []
-    cameraMatrix, distCoeffs = readCameraParameters("params/camera_params_c922_f30.yml")
+    cameraMatrix, distCoeffs = read_camera_parameters("params/camera_params_c922_f30.yml")
     markerPositions = load_marker_positions()
 
     tracker = MarkerTracker(cameraMatrix, distCoeffs, markerPositions)
@@ -40,7 +40,7 @@ def main():
         result = tracker.process_frame(frame)
         if result is not None:
             rvec, tvec = result
-            rvecRelative, tvecRelative = relativeTransform(
+            rvecRelative, tvecRelative = relative_transform(
                 rvec, tvec, baseRvec, baseTvec
             )
             Rrelative = cv2.Rodrigues(rvecRelative)[0]

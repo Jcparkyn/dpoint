@@ -36,17 +36,17 @@ class CameraReading(NamedTuple):
         )
 
 
-def readCameraParameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
+def read_camera_parameters(filename: str) -> Tuple[np.ndarray, np.ndarray]:
     fs = cv2.FileStorage(filename, cv2.FILE_STORAGE_READ)
     if not fs.isOpened():
         raise Exception("Couldn't open file")
-    cameraMatrix = fs.getNode("camera_matrix").mat()
-    distCoeffs = fs.getNode("distortion_coefficients").mat()
+    camera_matrix = fs.getNode("camera_matrix").mat()
+    dist_coeffs = fs.getNode("distortion_coefficients").mat()
     fs.release()
-    return (cameraMatrix, distCoeffs)
+    return (camera_matrix, dist_coeffs)
 
 
-def getWebcam():
+def get_webcam():
     webcam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
     webcam.set(cv2.CAP_PROP_FPS, 60)
     webcam.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
@@ -64,38 +64,38 @@ def getWebcam():
     return webcam
 
 
-def inverseRT(rvec, tvec) -> Tuple[np.ndarray, np.ndarray]:
+def inverse_RT(rvec, tvec) -> Tuple[np.ndarray, np.ndarray]:
     R, _ = cv2.Rodrigues(rvec)
     Rt = np.transpose(R)
     return (cv2.Rodrigues(Rt)[0], -Rt @ tvec)
 
 
-def relativeTransform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarray]:
-    rvec2inv, tvec2inv = inverseRT(rvec2, tvec2)
+def relative_transform(rvec1, tvec1, rvec2, tvec2) -> Tuple[np.ndarray, np.ndarray]:
+    rvec2inv, tvec2inv = inverse_RT(rvec2, tvec2)
     rvec, tvec, *_ = cv2.composeRT(rvec1, tvec1, rvec2inv, tvec2inv)
     return (rvec, tvec)
 
 
-def getArucoParams():
-    arucoParams = aruco.DetectorParameters()
-    arucoParams.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_CONTOUR
-    arucoParams.cornerRefinementWinSize = 2
+def get_aruco_params():
+    p = aruco.DetectorParameters()
+    p.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_CONTOUR
+    p.cornerRefinementWinSize = 2
     # Reduce the number of threshold steps, which significantly improves performance
-    arucoParams.adaptiveThreshWinSizeMin = 15
-    arucoParams.adaptiveThreshWinSizeMax = 15
-    arucoParams.useAruco3Detection = False
-    arucoParams.minMarkerPerimeterRate = 0.02
-    arucoParams.maxMarkerPerimeterRate = 2
-    arucoParams.minSideLengthCanonicalImg = 16
-    arucoParams.adaptiveThreshConstant = 7
-    return arucoParams
+    p.adaptiveThreshWinSizeMin = 15
+    p.adaptiveThreshWinSizeMax = 15
+    p.useAruco3Detection = False
+    p.minMarkerPerimeterRate = 0.02
+    p.maxMarkerPerimeterRate = 2
+    p.minSideLengthCanonicalImg = 16
+    p.adaptiveThreshConstant = 7
+    return p
 
 
-arucoDic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
-arucoParams = getArucoParams()
-detector = aruco.ArucoDetector(arucoDic, arucoParams)
+aruco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
+aruco_params = get_aruco_params()
+detector = aruco.ArucoDetector(aruco_dic, aruco_params)
 
-reprojectionErrorThreshold = 3  # px
+reprojection_error_threshold = 3  # px
 
 
 def array_to_str(arr):
@@ -108,7 +108,7 @@ charuco_params = aruco.DetectorParameters()
 charuco_detector = aruco.ArucoDetector(charuco_dic, charuco_params)
 
 
-def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
+def estimate_camera_pose_charuco(frame, camera_matrix, dist_coeffs):
     corners, ids, rejected = charuco_detector.detectMarkers(frame)
     if len(corners) == 0:
         raise Exception("No markers detected")
@@ -125,8 +125,8 @@ def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
         charuco_corners,
         charuco_ids,
         charuco_board,
-        cameraMatrix,
-        distCoeffs,
+        camera_matrix,
+        dist_coeffs,
         None,
         None,
         False,
@@ -138,7 +138,7 @@ def estimate_camera_pose_charuco(frame, cameraMatrix, distCoeffs):
     rvec, *_ = cv2.composeRT(np.array([0, 0, -np.pi / 2]), tvec * 0, rvec, tvec)
     rvec, *_ = cv2.composeRT(np.array([0, np.pi, 0]), tvec * 0, rvec, tvec)
     display_frame = cv2.drawFrameAxes(
-        display_frame, cameraMatrix, distCoeffs, rvec, tvec, 0.2
+        display_frame, camera_matrix, dist_coeffs, rvec, tvec, 0.2
     )
     # cv2.imshow("Charuco", display_frame)
     return (rvec, tvec)
@@ -150,36 +150,36 @@ def vector_rms(arr: np.ndarray, axis: int):
 
 
 def solve_pnp(
-    initialized, prevRvec, prevTvec, objectPoints, imagePoints, cameraMatrix, distCoeffs
+    initialized, prev_rvec, prev_tvec, object_points, image_points, camera_matrix, dist_coeffs
 ) -> Tuple[bool, np.ndarray, np.ndarray]:
     """Attempt to refine the previous pose. If this fails, fall back to SQPnP."""
     if initialized:
         rvec, tvec = cv2.solvePnPRefineVVS(
-            objectPoints,
-            imagePoints,
-            cameraMatrix=cameraMatrix,
-            distCoeffs=distCoeffs,
+            object_points,
+            image_points,
+            cameraMatrix=camera_matrix,
+            distCoeffs=dist_coeffs,
             # OpenCV mutates these arguments, which we don't want.
-            rvec=prevRvec.copy(),
-            tvec=prevTvec.copy(),
+            rvec=prev_rvec.copy(),
+            tvec=prev_tvec.copy(),
         )
-        projectedImagePoints, _ = cv2.projectPoints(
-            objectPoints, rvec, tvec, cameraMatrix, distCoeffs, None
+        projected_image_points, _ = cv2.projectPoints(
+            object_points, rvec, tvec, camera_matrix, dist_coeffs, None
         )
-        projectedImagePoints = projectedImagePoints[:, 0, :]
-        reprojectionError = vector_rms(projectedImagePoints - imagePoints, axis=1)
+        projected_image_points = projected_image_points[:, 0, :]
+        reprojection_error = vector_rms(projected_image_points - image_points, axis=1)
 
-        if reprojectionError < reprojectionErrorThreshold:
+        if reprojection_error < reprojection_error_threshold:
             # print(f"Reprojection error: {reprojectionError}")
             return (True, rvec, tvec)
         else:
-            print(f"Reprojection error too high: {reprojectionError}")
+            print(f"Reprojection error too high: {reprojection_error}")
 
     success, rvec, tvec = cv2.solvePnP(
-        objectPoints,
-        imagePoints,
-        cameraMatrix=cameraMatrix,
-        distCoeffs=distCoeffs,
+        object_points,
+        image_points,
+        cameraMatrix=camera_matrix,
+        distCoeffs=dist_coeffs,
         flags=cv2.SOLVEPNP_SQPNP,
     )
     return (success, rvec, tvec)
@@ -189,7 +189,7 @@ MarkerDict = dict[int, tuple[np.ndarray, np.ndarray]]
 
 
 def detect_markers_bounded(
-    detector, frame: np.ndarray, x0: int, x1: int, y0: int, y1: int
+    frame: np.ndarray, x0: int, x1: int, y0: int, y1: int
 ):
     x0, y0 = max(x0, 0), max(y0, 0)
     frame_view = frame[y0:y1, x0:x1]
@@ -212,17 +212,17 @@ def clamp(x, xmin, xmax):
 class MarkerTracker:
     def __init__(
         self,
-        cameraMatrix: np.ndarray,
-        distCoeffs: np.ndarray,
-        markerPositions: dict[int, np.ndarray],
+        camera_matrix: np.ndarray,
+        dist_coeffs: np.ndarray,
+        marker_positions: dict[int, np.ndarray],
     ):
-        self.cameraMatrix = cameraMatrix
-        self.distCoeffs = distCoeffs
+        self.cameraMatrix = camera_matrix
+        self.distCoeffs = dist_coeffs
         self.rvec: Optional[np.ndarray] = None
         self.tvec: Optional[np.ndarray] = None
         self.initialized = False
-        self.markerPositions = markerPositions
-        self.allObjectPoints = np.concatenate(list(markerPositions.values()))
+        self.markerPositions = marker_positions
+        self.allObjectPoints = np.concatenate(list(marker_positions.values()))
         self.lastValidMarkers: MarkerDict = {}
         self.lastVelocity = np.zeros(2)
 
@@ -230,13 +230,13 @@ class MarkerTracker:
         """Returns a bounding box to search in the next frame, based on the current marker positions and velocity."""
 
         # Re-project all object points, to avoid cases where some markers were missed in the previous frame.
-        projectedImagePoints, _ = cv2.projectPoints(
+        projected_image_points, _ = cv2.projectPoints(
             self.allObjectPoints, rvec, tvec, self.cameraMatrix, self.distCoeffs, None
         )
-        projectedImagePoints = projectedImagePoints[:, 0, :]
+        projected_image_points = projected_image_points[:, 0, :]
 
-        x0, x1 = bounds(projectedImagePoints[:, 0] + velocity[0] / FPS)
-        y0, y1 = bounds(projectedImagePoints[:, 1] + velocity[1] / FPS)
+        x0, x1 = bounds(projected_image_points[:, 0] + velocity[0] / FPS)
+        y0, y1 = bounds(projected_image_points[:, 1] + velocity[1] / FPS)
         w = x1 - x0
         h = y1 - y0
 
@@ -259,71 +259,71 @@ class MarkerTracker:
             )
             cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 100, 0, 0.3), 2)
             allCornersIS, ids, rejected = detect_markers_bounded(
-                detector, frame, x0, x1, y0, y1
+                frame, x0, x1, y0, y1
             )
         else:
             allCornersIS, ids, rejected = detector.detectMarkers(frame)
         aruco.drawDetectedMarkers(frame, allCornersIS, ids)
-        validMarkers: MarkerDict = {}
+        valid_markers: MarkerDict = {}
         if ids is not None:
             for i in range(ids.shape[0]):
                 # cornersIS is 4x2
                 id, cornersIS = (ids[i, 0], allCornersIS[i][0, :, :])
                 if id in self.markerPositions:
                     cornersPS = self.markerPositions[id]
-                    validMarkers[id] = (cornersPS, cornersIS)
+                    valid_markers[id] = (cornersPS, cornersIS)
 
-        if len(validMarkers) < 1:
+        if len(valid_markers) < 1:
             self.initialized = False
             self.lastValidMarkers = {}
             self.next_search_area = None
             return None
 
-        pointDeltas = []
-        for id, (cornersPS, cornersIS) in validMarkers.items():
+        point_deltas = []
+        for id, (cornersPS, cornersIS) in valid_markers.items():
             if id in self.lastValidMarkers:
                 velocity = cornersIS - self.lastValidMarkers[id][1]
-                pointDeltas.append(np.mean(velocity, axis=0))
+                point_deltas.append(np.mean(velocity, axis=0))
 
-        if pointDeltas:
-            meanVelocity = np.mean(pointDeltas, axis=0) * 30  # px/second
+        if point_deltas:
+            meanVelocity = np.mean(point_deltas, axis=0) * 30  # px/second
         else:
             meanVelocity = np.zeros(2)
 
-        meanPositionIS = np.mean(
-            [cornersIS for _, cornersIS in validMarkers.values()],
+        mean_position_IS = np.mean(
+            [cornersIS for _, cornersIS in valid_markers.values()],
             axis=(0, 1),
         )
 
-        screenCorners = []
-        penCorners = []
-        delayPerImageRow = 1 / 30 / 1080  # seconds/row
+        screen_corners = []
+        pen_corners = []
+        delay_per_image_row = 1 / 30 / 1080  # seconds/row
 
-        for id, (cornersPS, cornersIS) in validMarkers.items():
-            penCorners.append(cornersPS)
-            if pointDeltas:
+        for id, (cornersPS, cornersIS) in valid_markers.items():
+            pen_corners.append(cornersPS)
+            if point_deltas:
                 # Compensate for rolling shutter
                 timeDelay = (
-                    cornersIS[:, 1] - meanPositionIS[1]
-                ) * delayPerImageRow  # seconds, relative to centroid
+                    cornersIS[:, 1] - mean_position_IS[1]
+                ) * delay_per_image_row  # seconds, relative to centroid
                 cornersISCompensated = (
                     cornersIS - meanVelocity * timeDelay[:, np.newaxis]
                 )
-                screenCorners.append(cornersISCompensated)
+                screen_corners.append(cornersISCompensated)
             else:
-                screenCorners.append(cornersIS)
+                screen_corners.append(cornersIS)
 
         self.initialized, self.rvec, self.tvec = solve_pnp(
             self.initialized,
             self.rvec,
             self.tvec,
-            objectPoints=np.concatenate(penCorners),
-            imagePoints=np.concatenate(screenCorners),
-            cameraMatrix=self.cameraMatrix,
-            distCoeffs=self.distCoeffs,
+            object_points=np.concatenate(pen_corners),
+            image_points=np.concatenate(screen_corners),
+            camera_matrix=self.cameraMatrix,
+            dist_coeffs=self.distCoeffs,
         )
 
-        self.lastValidMarkers = validMarkers
+        self.lastValidMarkers = valid_markers
         self.lastVelocity = meanVelocity
         return (self.rvec, self.tvec)
 
@@ -365,22 +365,22 @@ def run_tracker(
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -120)
     cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
-    cameraMatrix, distCoeffs = readCameraParameters("params/camera_params_c922_f30.yml")
-    markerPositions = load_marker_positions()
+    camera_matrix, dist_coeffs = read_camera_parameters("params/camera_params_c922_f30.yml")
+    marker_positions = load_marker_positions()
     print("Opening webcam..")
-    webcam = getWebcam()
+    webcam = get_webcam()
 
     calibrated = False
     baseRvec = np.zeros([3, 1])
     baseTvec = np.zeros([3, 1])
     avg_fps = 30
 
-    tracker = MarkerTracker(cameraMatrix, distCoeffs, markerPositions)
+    tracker = MarkerTracker(camera_matrix, dist_coeffs, marker_positions)
     frame_count = 0
     auto_focus = True
     current_focus = 30
     while True:
-        frameStartTime = time.perf_counter()
+        frame_start_time = time.perf_counter()
         keypress = cv2.waitKey(1) & 0xFF
         if keypress == ord("q"):
             break
@@ -406,36 +406,36 @@ def run_tracker(
             success = cv2.imwrite(filepath, frame)
             print(f"save: {success}, {filepath}")
 
-        processingStartTime = time.perf_counter()
+        processing_start_time = time.perf_counter()
 
         if not calibrated or keypress == ord("c"):
             print("Calibrating...")
             try:
                 baseRvec, baseTvec = estimate_camera_pose_charuco(
-                    frame, cameraMatrix, distCoeffs
+                    frame, camera_matrix, dist_coeffs
                 )
                 calibrated = True
             except Exception as e:
                 print("Error calibrating camera, press C to retry.", e)
 
         result = tracker.process_frame(frame)
-        processingEndTime = time.perf_counter()
+        processing_end_time = time.perf_counter()
         if result is not None:
             rvec, tvec = result
-            rvecRelative, tvecRelative = relativeTransform(
+            rvec_relative, tvec_relative = relative_transform(
                 rvec, tvec, baseRvec, baseTvec
             )
             tip_to_imu_offset = -np.array(IMU_OFFSET) - [0, STYLUS_LENGTH, 0]
-            rvecTip, tvecTip, *_ = cv2.composeRT(
+            rvec_tip, tvec_tip, *_ = cv2.composeRT(
                 np.zeros(3), tip_to_imu_offset, rvec, tvec
             )
-            _, tvecTipRelative = relativeTransform(rvecTip, tvecTip, baseRvec, baseTvec)
-            Rrelative = cv2.Rodrigues(rvecRelative)[0]  # TODO: use Rodrigues directly
-            cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvec, tvec, 0.01)
-            cv2.drawFrameAxes(frame, cameraMatrix, distCoeffs, rvecTip, tvecTip, 0.01)
+            _, tvec_tip_relative = relative_transform(rvec_tip, tvec_tip, baseRvec, baseTvec)
+            R_relative = cv2.Rodrigues(rvec_relative)[0]  # TODO: use Rodrigues directly
+            cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.01)
+            cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec_tip, tvec_tip, 0.01)
             cv2.putText(
                 frame,
-                f"IMU: [{array_to_str(tvecRelative*100)}]cm",
+                f"IMU: [{array_to_str(tvec_relative*100)}]cm",
                 (10, 120),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
@@ -443,7 +443,7 @@ def run_tracker(
             )
             cv2.putText(
                 frame,
-                f"Tip: [{array_to_str(tvecTipRelative*100)}]cm",
+                f"Tip: [{array_to_str(tvec_tip_relative*100)}]cm",
                 (10, 150),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
@@ -451,10 +451,10 @@ def run_tracker(
             )
 
             if on_estimate is not None:
-                on_estimate(CameraReading(tvecRelative, Rrelative))
+                on_estimate(CameraReading(tvec_relative, R_relative))
 
-        frameEndTime = time.perf_counter()
-        fps = 1 / (frameEndTime - frameStartTime)
+        frame_end_time = time.perf_counter()
+        fps = 1 / (frame_end_time - frame_start_time)
         avg_fps = 0.9 * avg_fps + 0.1 * fps
         cv2.putText(
             frame,
@@ -466,7 +466,7 @@ def run_tracker(
         )
         cv2.putText(
             frame,
-            f"Processing: {(processingEndTime - processingStartTime)*1000:.1f}ms",
+            f"Processing: {(processing_end_time - processing_start_time)*1000:.1f}ms",
             (10, 60),
             cv2.FONT_HERSHEY_DUPLEX,
             1,

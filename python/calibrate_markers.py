@@ -9,7 +9,7 @@ import cv2
 import glob
 import scipy.optimize
 from cv2 import aruco
-from app.marker_tracker import arucoParams, readCameraParameters
+from app.marker_tracker import aruco_params, read_camera_parameters
 from app.dimensions import idealMarkerPositions
 
 MARKER_COUNT = 8  # The number of markers on the pen
@@ -133,8 +133,8 @@ def calibrate_markers(camera_matrix, dist_coeffs, observations: list[Observation
 
 
 def main():
-    observed_points = get_observed_points(IMAGE_PATH, arucoParams)
-    camera_matrix, dist_coeffs = readCameraParameters("./params/camera_params_c922_f30.yml")
+    observed_points = get_observed_points(IMAGE_PATH, aruco_params)
+    camera_matrix, dist_coeffs = read_camera_parameters("./params/camera_params_c922_f30.yml")
     result = calibrate_markers(camera_matrix, dist_coeffs, observed_points)
 
     calibratedMarkerPositions = {
