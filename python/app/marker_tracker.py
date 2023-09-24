@@ -17,6 +17,7 @@ RECORD_DATA = True
 FPS = 30
 FRAME_WIDTH = 1920
 FRAME_HEIGHT = 1080
+TEXT_COL = (0, 0, 255)
 
 
 class CameraReading(NamedTuple):
@@ -438,7 +439,7 @@ def run_tracker(
                 (10, 120),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
-                (255, 0, 0),
+                TEXT_COL,
             )
             cv2.putText(
                 frame,
@@ -446,7 +447,7 @@ def run_tracker(
                 (10, 150),
                 cv2.FONT_HERSHEY_DUPLEX,
                 1,
-                (255, 0, 0),
+                TEXT_COL,
             )
 
             if on_estimate is not None:
@@ -461,7 +462,7 @@ def run_tracker(
             (10, 30),
             cv2.FONT_HERSHEY_DUPLEX,
             1,
-            (0, 255, 0),
+            TEXT_COL,
         )
         cv2.putText(
             frame,
@@ -469,7 +470,7 @@ def run_tracker(
             (10, 60),
             cv2.FONT_HERSHEY_DUPLEX,
             1,
-            (0, 255, 0),
+            TEXT_COL,
         )
         cv2.putText(
             frame,
@@ -477,7 +478,7 @@ def run_tracker(
             (10, 180),
             cv2.FONT_HERSHEY_DUPLEX,
             1,
-            (255, 0, 0),
+            TEXT_COL,
         )
 
         cv2.imshow("Tracker", frame)
