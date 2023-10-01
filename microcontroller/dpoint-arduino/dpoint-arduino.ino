@@ -132,6 +132,9 @@ void setup() {
   digitalWrite(LEDR, HIGH);
   digitalWrite(LEDG, HIGH);
   digitalWrite(LEDB, HIGH);
+  // Set battery charge rate to 100mA
+  pinMode(P0_13, OUTPUT);
+  digitalWrite(P0_13, LOW);
 
   Wire1.setClock(400000UL);
   // Serial.begin(19200);
