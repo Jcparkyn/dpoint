@@ -12,7 +12,7 @@ analogin_config_t adcConfig = {
     .acq_time   = NRF_SAADC_ACQTIME_10US,
     .mode       = NRF_SAADC_MODE_DIFFERENTIAL,
     .burst      = NRF_SAADC_BURST_ENABLED,
-    .pin_p      = NRF_SAADC_INPUT_AIN5,
+    .pin_p      = NRF_SAADC_INPUT_AIN5, // Should be AIN2, something wrong in seeed files.
     .pin_n      = NRF_SAADC_INPUT_AIN4,
 };
 #define PRESSURE_SENSOR_VCC_PIN D1
