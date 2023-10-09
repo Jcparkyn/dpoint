@@ -28,6 +28,6 @@ The VPE process involves the four main steps:
 
 ### Inertial fusion
 
-We use an Extended Kalman Filter (EKF) to fuse the VPE estimates with the inertial data from the accelerometer and gyroscope, and refine the estimates in real-time using the Rauch-Tung-Striebel (RTS) algorithm. To account for time delay from the camera frames, we use a negative-time measurement update algorithm.
+We use an Extended Kalman Filter (EKF) to fuse the VPE estimates with the inertial data from the accelerometer and gyroscope, and refine the estimates in real-time using the Rauch-Tung-Striebel (RTS) algorithm. To account for time delay from the camera frames, we use a negative-time measurement update algorithm. The EKF is implemented using NumPy and [Numba](https://numba.pydata.org/).
 
 The use of inertial measurements dramatically reduces latency compared to a camera-only implementation, while also improving accuracy and report rate for fast movements.
