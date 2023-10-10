@@ -24,7 +24,7 @@ from app.marker_tracker import CameraReading, run_tracker
 from app.monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
-TRAIL_POINTS = 1000
+TRAIL_POINTS = 6000
 USE_3D_LINE = (
     False  # If true, uses a lower quality GL line renderer that supports 3D lines
 )
@@ -110,19 +110,16 @@ class CanvasWrapper:
         # agg looks much better than gl, but only works with 2D data.
         if USE_3D_LINE:
             self.trail_line = visuals.Line(
-                pos=self.line_data_pos,
-                color="black",
                 width=1,
                 parent=self.view_top.scene,
                 method="gl",
             )
         else:
             self.trail_line = visuals.Line(
-                pos=self.line_data_pos[:, 0:2],
-                color="black",
-                width=2,
+                width=3,
                 parent=self.view_top.scene,
                 method="agg",
+                antialias=False
             )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
@@ -160,6 +157,8 @@ class CanvasWrapper:
             else:
                 recording_enabled.value = False
                 print("Recording disabled")
+        elif e.key == "C":
+            self.line_data_pressure *= 0
 
 
 class MainWindow(QtWidgets.QMainWindow):
