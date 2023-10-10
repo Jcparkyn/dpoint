@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import time
 from typing import NamedTuple
-from PyQt6 import QtWidgets, QtCore
+from PyQt6 import QtWidgets, QtCore, QtGui
 
 import vispy
 from vispy import scene
@@ -18,6 +18,7 @@ from vispy.visuals import transforms
 import numpy as np
 import queue
 import multiprocessing as mp
+from app.color_button import ColorButton
 from app.filter import DpointFilter, blend_new_data
 
 from app.marker_tracker import CameraReading, run_tracker
@@ -55,14 +56,11 @@ def get_line_color(line: np.ndarray):
     )
 
 
-def get_line_color_from_pressure(pressure: np.ndarray, color=(0, 0, 0)):
+def get_line_color_from_pressure(pressure: np.ndarray, color=(0, 0, 0, 1)):
     base_col = np.array(color, dtype=np.float32)
-    return np.column_stack(
-        [
-            np.tile(base_col, (pressure.shape[0], 1)),
-            np.clip(pressure - 0.02, 0, 1),
-        ]
-    )
+    col = np.tile(base_col, (pressure.shape[0], 1))
+    col[:,3] *= np.clip(pressure - 0.02, 0, 1)
+    return col
 
 
 class CameraUpdateData(NamedTuple):
@@ -99,6 +97,7 @@ class CanvasWrapper:
             vertices, faces, color=(0.8, 0.8, 0.8, 1), parent=self.view_top.scene
         )
         self.pen_mesh.transform = transforms.MatrixTransform()
+        self.line_color = (0, 0, 0, 1)
 
         pen_tip = visuals.XYZAxis(parent=self.pen_mesh)
         pen_tip.transform = transforms.MatrixTransform(
@@ -146,8 +145,18 @@ class CanvasWrapper:
     def refresh_line(self):
         self.trail_line.set_data(
             self.line_data_pos if USE_3D_LINE else self.line_data_pos[:, 0:2],
-            color=get_line_color_from_pressure(self.line_data_pressure),
+            color=get_line_color_from_pressure(self.line_data_pressure, self.line_color),
         )
+
+    def clear_line(self):
+        self.line_data_pressure *= 0
+
+    def set_line_color(self, col: QtGui.QColor):
+        self.line_color = col.getRgbF() # (col.redF, col.greenF, col.blueF)
+        print(col,  col.getRgbF())
+
+    def set_line_width(self, width: float):
+        self.trail_line.set_data(width=width)
 
     def on_key_press(self, e: vispy.app.canvas.KeyEvent):
         if e.key == "R":
@@ -158,7 +167,7 @@ class CanvasWrapper:
                 recording_enabled.value = False
                 print("Recording disabled")
         elif e.key == "C":
-            self.line_data_pressure *= 0
+            self.clear_line()
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -168,13 +177,35 @@ class MainWindow(QtWidgets.QMainWindow):
         super().__init__(*args, **kwargs)
 
         central_widget = QtWidgets.QWidget()
-        main_layout = QtWidgets.QHBoxLayout()
+        main_layout = QtWidgets.QVBoxLayout()
 
         self._canvas_wrapper = canvas_wrapper
         main_layout.addWidget(self._canvas_wrapper.canvas.native)
 
+        color_button = ColorButton("Line color")
+        color_button.colorChanged.connect(canvas_wrapper.set_line_color)
+        clear_button = QtWidgets.QPushButton("Clear (C)")
+        clear_button.clicked.connect(canvas_wrapper.clear_line)
+        self.line_width_label = QtWidgets.QLabel("")
+        self.line_width_label.setMinimumWidth(80)
+        self.line_width_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
+        self.line_width_slider.setRange(1,20)
+        self.line_width_slider.valueChanged.connect(self.line_width_changed)
+        self.line_width_slider.setValue(2)
+        bottom_toolbar = QtWidgets.QHBoxLayout()
+        bottom_toolbar.addWidget(clear_button)
+        bottom_toolbar.addWidget(color_button)
+        bottom_toolbar.addWidget(QtWidgets.QLabel("Line width:"))
+        bottom_toolbar.addWidget(self.line_width_slider)
+        bottom_toolbar.addWidget(self.line_width_label)
+        main_layout.addLayout(bottom_toolbar)
+
         central_widget.setLayout(main_layout)
         self.setCentralWidget(central_widget)
+
+    def line_width_changed(self, width):
+        self.line_width_label.setText(str(width))
+        self._canvas_wrapper.set_line_width(width)
 
     def closeEvent(self, event):
         print("Closing main window!")
