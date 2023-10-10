@@ -1,8 +1,8 @@
 #include <Adafruit_SPIFlash.h>
 #include <LSM6DS3.h>
-#include <nrf52840.h>
 #include <Wire.h>
 #include <bluefruit.h>
+#include <nrf52840.h>
 #include <nrf_saadc.h>
 #include <nrf_power.h>
 
@@ -15,6 +15,7 @@
 
 const unsigned long delayMs = 7;
 const unsigned long rate = 1000/delayMs;
+const unsigned long stayAwakeTimeMs = 1000*30;
 
 struct IMUDataPacket {
   int16_t accel[3];
@@ -34,10 +35,20 @@ const uint8_t LBS_UUID_CHR_IMU[] =
 };
 
 BLEService bleService(LBS_UUID_SERVICE);
-BLECharacteristic imuCharacteristic(LBS_UUID_CHR_IMU); //, 0, sizeof(IMUDataPacket), true);
+BLECharacteristic imuCharacteristic(LBS_UUID_CHR_IMU);
 
 Adafruit_FlashTransport_QSPI flashTransport;
 LSM6DS3 myIMU(I2C_MODE, 0x6A); //I2C device address 0x6A
+
+const nrf_saadc_channel_config_t adcConfig = {
+  .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
+  .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
+  .gain       = NRF_SAADC_GAIN4,
+  .reference  = NRF_SAADC_REFERENCE_VDD4,
+  .acq_time   = NRF_SAADC_ACQTIME_20US,
+  .mode       = NRF_SAADC_MODE_DIFFERENTIAL,
+  .burst      = NRF_SAADC_BURST_ENABLED,
+};
 
 // Disable QSPI flash to save power
 void QSPIF_sleep(void)
@@ -51,7 +62,7 @@ void imuISR() {
   // Interrupt triggers for both single and double taps, so we need to check which one it was.
   uint8_t tapSrc;
   status_t status = myIMU.readRegister(&tapSrc, LSM6DS3_ACC_GYRO_TAP_SRC);
-  bool wasDoubleTap = (tapSrc >> 4) & 1;
+  bool wasDoubleTap = (tapSrc & LSM6DS3_ACC_GYRO_DOUBLE_TAP_EV_STATUS_DETECTED) > 0;
   if (!wasDoubleTap) {
     nrf_power_system_off(NRF_POWER);
   }
@@ -80,16 +91,6 @@ void setupWakeUpInterrupt()
   return;
 }
 
-nrf_saadc_channel_config_t adcConfig = {
-  .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
-  .resistor_n = NRF_SAADC_RESISTOR_DISABLED,
-  .gain       = NRF_SAADC_GAIN4, // GAIN4
-  .reference  = NRF_SAADC_REFERENCE_VDD4, // VDD4
-  .acq_time   = NRF_SAADC_ACQTIME_20US,
-  .mode       = NRF_SAADC_MODE_DIFFERENTIAL,
-  .burst      = NRF_SAADC_BURST_ENABLED,
-};
-
 void setupPressureSensor() {
   pinMode(PRESSURE_SENSOR_VCC_PIN, OUTPUT);
   digitalWrite(PRESSURE_SENSOR_VCC_PIN, HIGH);
@@ -101,7 +102,6 @@ void setupPressureSensor() {
   nrf_saadc_channel_input_set(NRF_SAADC, PRESSURE_SENSOR_SAADC_CHANNEL, NRF_SAADC_INPUT_AIN2, NRF_SAADC_INPUT_AIN4);
   nrf_saadc_channel_init(NRF_SAADC, PRESSURE_SENSOR_SAADC_CHANNEL, &adcConfig);
 
-  Serial.println("Calibrating...");
   NRF_SAADC->TASKS_CALIBRATEOFFSET = 1;
   while (NRF_SAADC->EVENTS_CALIBRATEDONE == 0);
   NRF_SAADC->EVENTS_CALIBRATEDONE = 0;
@@ -149,10 +149,7 @@ void setupImu() {
   myIMU.begin();
 }
 
-const float wakeUpThreshold = 200.0f; // 500.0f; // degrees per second
-const unsigned long stayAwakeTimeMs = 1000*30; // milliseconds
-
-void run_ble() {
+void runBle() {
   while (Bluefruit.connected(0)) {
     unsigned long startTime = millis();
 
@@ -260,7 +257,7 @@ void loop() {
       digitalWrite(LEDR, HIGH);
       digitalWrite(LEDG, LOW);
       digitalWrite(LEDB, HIGH);
-      run_ble();
+      runBle();
       digitalWrite(LEDR, HIGH);
       digitalWrite(LEDG, HIGH);
       digitalWrite(LEDB, LOW);
