@@ -25,7 +25,7 @@ from app.marker_tracker import CameraReading, run_tracker
 from app.monitor_ble import StopCommand, StylusReading, monitor_ble
 
 CANVAS_SIZE = (1080, 1080)  # (width, height)
-TRAIL_POINTS = 6000
+TRAIL_POINTS = 12000
 USE_3D_LINE = (
     False  # If true, uses a lower quality GL line renderer that supports 3D lines
 )
@@ -40,9 +40,9 @@ recording_timestamp = app_start_datetime.strftime("%Y%m%d_%H%M%S")
 
 def append_line_point(line: np.ndarray, new_point: np.array):
     """Append new points to a line."""
-    line = np.roll(line, -1, axis=0)
+    # There are many faster ways to do this, but this solution works well enough
+    line[:-1, :] = line[1:, :]
     line[-1, :] = new_point
-    return line
 
 
 def get_line_color(line: np.ndarray):
@@ -59,7 +59,7 @@ def get_line_color(line: np.ndarray):
 def get_line_color_from_pressure(pressure: np.ndarray, color=(0, 0, 0, 1)):
     base_col = np.array(color, dtype=np.float32)
     col = np.tile(base_col, (pressure.shape[0], 1))
-    col[:,3] *= np.clip(pressure - 0.02, 0, 1)
+    col[:,3] *= np.clip(pressure, 0, 1)
     return col
 
 
@@ -132,8 +132,8 @@ class CanvasWrapper:
                 self.pen_mesh.transform.matrix = (
                     orientation_quat.get_matrix() @ vispy.util.transforms.translate(pos)
                 )
-                self.line_data_pos = append_line_point(self.line_data_pos, pos)
-                self.line_data_pressure = np.roll(self.line_data_pressure, -1)
+                append_line_point(self.line_data_pos, pos)
+                self.line_data_pressure[:-1] = self.line_data_pressure[1:] # np.roll(self.line_data_pressure, -1)
                 self.line_data_pressure[-1] = pressure
             case CameraUpdateData(position_replace):
                 if len(position_replace) == 0:
@@ -143,9 +143,15 @@ class CanvasWrapper:
                 self.refresh_line()
 
     def refresh_line(self):
+        # Skip rendering points where both ends have zero pressure
+        pressure_mask = self.line_data_pressure > 0
+        pressure_mask = pressure_mask | np.roll(pressure_mask, 1) | np.roll(pressure_mask, -1)
+        pressure_mask[0:2] = True # To ensure we always have at least one line segment
+        pos = self.line_data_pos[pressure_mask,:]
+        pressure = self.line_data_pressure[pressure_mask]
         self.trail_line.set_data(
-            self.line_data_pos if USE_3D_LINE else self.line_data_pos[:, 0:2],
-            color=get_line_color_from_pressure(self.line_data_pressure, self.line_color),
+            pos if USE_3D_LINE else pos[:, 0:2],
+            color=get_line_color_from_pressure(pressure, self.line_color),
         )
 
     def clear_line(self):
