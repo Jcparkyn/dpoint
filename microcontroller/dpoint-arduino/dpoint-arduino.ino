@@ -15,7 +15,7 @@
 
 const unsigned long delayMs = 7;
 const unsigned long rate = 1000/delayMs;
-const unsigned long stayAwakeTimeMs = 1000*30;
+const unsigned long stayAwakeTimeMs = 1000*60;
 
 struct IMUDataPacket {
   int16_t accel[3];
@@ -38,7 +38,7 @@ BLEService bleService(LBS_UUID_SERVICE);
 BLECharacteristic imuCharacteristic(LBS_UUID_CHR_IMU);
 
 Adafruit_FlashTransport_QSPI flashTransport;
-LSM6DS3 myIMU(I2C_MODE, 0x6A); //I2C device address 0x6A
+LSM6DS3 imu(I2C_MODE, 0x6A); //I2C device address 0x6A
 
 const nrf_saadc_channel_config_t adcConfig = {
   .resistor_p = NRF_SAADC_RESISTOR_DISABLED,
@@ -61,7 +61,7 @@ void QSPIF_sleep(void)
 void imuISR() {
   // Interrupt triggers for both single and double taps, so we need to check which one it was.
   uint8_t tapSrc;
-  status_t status = myIMU.readRegister(&tapSrc, LSM6DS3_ACC_GYRO_TAP_SRC);
+  status_t status = imu.readRegister(&tapSrc, LSM6DS3_ACC_GYRO_TAP_SRC);
   bool wasDoubleTap = (tapSrc & LSM6DS3_ACC_GYRO_DOUBLE_TAP_EV_STATUS_DETECTED) > 0;
   if (!wasDoubleTap) {
     nrf_power_system_off(NRF_POWER);
@@ -70,19 +70,24 @@ void imuISR() {
 
 void setupWakeUpInterrupt()
 {
-  // Start with LSM6DS3 in disabled to save power
-  myIMU.settings.gyroEnabled = 0;
-  myIMU.settings.accelEnabled = 0;
-  myIMU.begin();
+  // Tap interrupt code is based on code by daCoder
+  // https://forum.seeedstudio.com/t/xiao-sense-accelerometer-examples-and-low-power/270801
+  imu.settings.gyroEnabled = 0;
+  imu.settings.accelEnabled = 1;
+  imu.settings.accelSampleRate = 104;
+  imu.settings.accelRange = 2;
+  imu.begin();
 
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_CTRL1_XL, 0x30);    // Turn on the accelerometer
-                                                           // ODR_XL = 52 Hz, FS_XL = ±2 g
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_TAP_CFG1, 0b10001000);    // Enable interrupts and tap detection on X-axis
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_TAP_THS_6D, 0b10000100);  // Set tap threshold
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_INT_DUR2, 0x10);    // Set Duration, Quiet and Shock time windows
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_WAKE_UP_THS, 0x80); // Single & double-tap enabled (SINGLE_DOUBLE_TAP = 1)
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_MD1_CFG, 0x08);     // Double-tap interrupt driven to INT1 pin
-  myIMU.writeRegister(LSM6DS3_ACC_GYRO_CTRL6_G, 0x10);     // High-performance operating mode disabled for accelerometer
+  //https://www.st.com/resource/en/datasheet/lsm6ds3tr-c.pdf
+  imu.writeRegister(LSM6DS3_ACC_GYRO_TAP_CFG1, 0b10001000); // Enable interrupts and tap detection on X-axis
+  imu.writeRegister(LSM6DS3_ACC_GYRO_TAP_THS_6D, 0b10001000); // Set tap threshold
+  const int duration = 0b0010 << 4; // 1LSB corresponds to 32*ODR_XL time
+  const int quietTime = 0b10 << 2; // 1LSB corresponds to 4*ODR_XL time
+  const int shockTime = 0b01 << 0; // 1LSB corresponds to 8*ODR_XL time
+  imu.writeRegister(LSM6DS3_ACC_GYRO_INT_DUR2, duration | quietTime | shockTime); // Set Duration, Quiet and Shock time windows
+  imu.writeRegister(LSM6DS3_ACC_GYRO_WAKE_UP_THS, 0x80); // Single & double-tap enabled (SINGLE_DOUBLE_TAP = 1)
+  imu.writeRegister(LSM6DS3_ACC_GYRO_MD1_CFG, 0x08); // Double-tap interrupt driven to INT1 pin
+  imu.writeRegister(LSM6DS3_ACC_GYRO_CTRL6_G, 0x10); // High-performance operating mode disabled for accelerometer
 
   // Set up the sense mechanism to generate the DETECT signal to wake from system_off
   pinMode(PIN_LSM6DS3TR_C_INT1, INPUT_PULLDOWN_SENSE);
@@ -140,13 +145,13 @@ int16_t readPressure() {
 }
 
 void setupImu() {
-  myIMU.settings.accelRange = 4; // Can be: 2, 4, 8, 16
-  myIMU.settings.gyroRange = 500; // Can be: 125, 245, 500, 1000, 2000
-  myIMU.settings.accelSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666, 3332, 6664, 13330
-  myIMU.settings.gyroSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666
-  myIMU.settings.accelBandWidth = 200;
-  myIMU.settings.gyroBandWidth = 200;
-  myIMU.begin();
+  imu.settings.accelRange = 4; // Can be: 2, 4, 8, 16
+  imu.settings.gyroRange = 500; // Can be: 125, 245, 500, 1000, 2000
+  imu.settings.accelSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666, 3332, 6664, 13330
+  imu.settings.gyroSampleRate = 416; //Hz.  Can be: 13, 26, 52, 104, 208, 416, 833, 1666
+  imu.settings.accelBandWidth = 200;
+  imu.settings.gyroBandWidth = 200;
+  imu.begin();
 }
 
 void runBle() {
@@ -155,12 +160,12 @@ void runBle() {
 
     IMUDataPacket packet;
     // This could be optimised by reading all values as a block.
-    packet.accel[0] = myIMU.readRawAccelX();
-    packet.accel[1] = myIMU.readRawAccelY();
-    packet.accel[2] = myIMU.readRawAccelZ();
-    packet.gyro[0] = myIMU.readRawGyroX();
-    packet.gyro[1] = myIMU.readRawGyroY();
-    packet.gyro[2] = myIMU.readRawGyroZ();
+    packet.accel[0] = imu.readRawAccelX();
+    packet.accel[1] = imu.readRawAccelY();
+    packet.accel[2] = imu.readRawAccelZ();
+    packet.gyro[0] = imu.readRawGyroX();
+    packet.gyro[1] = imu.readRawGyroY();
+    packet.gyro[2] = imu.readRawGyroZ();
 
     packet.pressure = readPressure();
     
