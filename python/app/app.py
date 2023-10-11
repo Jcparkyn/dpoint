@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 from typing import NamedTuple
 from PyQt6 import QtWidgets, QtCore, QtGui
+from PyQt6.QtCore import Qt
 
 import vispy
 from vispy import scene
@@ -56,10 +57,9 @@ def get_line_color(line: np.ndarray):
     )
 
 
-def get_line_color_from_pressure(pressure: np.ndarray, color=(0, 0, 0, 1)):
-    base_col = np.array(color, dtype=np.float32)
-    col = np.tile(base_col, (pressure.shape[0], 1))
-    col[:,3] *= np.clip(pressure, 0, 1)
+def get_line_color_from_pressure(pressure: float, color=(0, 0, 0, 1)):
+    col = np.array(color, dtype=np.float32)
+    col[3] *= np.clip(pressure, 0, 1)
     return col
 
 
@@ -78,7 +78,7 @@ ViewUpdateData = CameraUpdateData | StylusUpdateData
 
 class CanvasWrapper:
     def __init__(self):
-        self.canvas = SceneCanvas(size=CANVAS_SIZE, keys="interactive")
+        self.canvas = SceneCanvas(size=CANVAS_SIZE)
         self.canvas.measure_fps()
         self.canvas.connect(self.on_key_press)
         self.grid = self.canvas.central_widget.add_grid()
@@ -105,7 +105,7 @@ class CanvasWrapper:
         )
 
         self.line_data_pos = np.zeros((TRAIL_POINTS, 3), dtype=np.float32)
-        self.line_data_pressure = np.zeros(TRAIL_POINTS, dtype=np.float32)
+        self.line_data_col = np.zeros((TRAIL_POINTS, 4), dtype=np.float32)
         # agg looks much better than gl, but only works with 2D data.
         if USE_3D_LINE:
             self.trail_line = visuals.Line(
@@ -115,10 +115,7 @@ class CanvasWrapper:
             )
         else:
             self.trail_line = visuals.Line(
-                width=3,
-                parent=self.view_top.scene,
-                method="agg",
-                antialias=False
+                width=3, parent=self.view_top.scene, method="agg", antialias=False
             )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
@@ -127,14 +124,16 @@ class CanvasWrapper:
 
     def update_data(self, new_data: ViewUpdateData):
         match new_data:
-            case StylusUpdateData(position=pos, orientation=orientation, pressure=pressure):
+            case StylusUpdateData(
+                position=pos, orientation=orientation, pressure=pressure
+            ):
                 orientation_quat = quaternion.Quaternion(*orientation).inverse()
                 self.pen_mesh.transform.matrix = (
                     orientation_quat.get_matrix() @ vispy.util.transforms.translate(pos)
                 )
+                col = get_line_color_from_pressure(pressure, self.line_color)
                 append_line_point(self.line_data_pos, pos)
-                self.line_data_pressure[:-1] = self.line_data_pressure[1:] # np.roll(self.line_data_pressure, -1)
-                self.line_data_pressure[-1] = pressure
+                append_line_point(self.line_data_col, col)
             case CameraUpdateData(position_replace):
                 if len(position_replace) == 0:
                     return
@@ -143,37 +142,50 @@ class CanvasWrapper:
                 self.refresh_line()
 
     def refresh_line(self):
-        # Skip rendering points where both ends have zero pressure
-        pressure_mask = self.line_data_pressure > 0
-        pressure_mask = pressure_mask | np.roll(pressure_mask, 1) | np.roll(pressure_mask, -1)
-        pressure_mask[0:2] = True # To ensure we always have at least one line segment
-        pos = self.line_data_pos[pressure_mask,:]
-        pressure = self.line_data_pressure[pressure_mask]
+        # Skip rendering points where both ends have zero alpha
+        pressure_mask = self.line_data_col[:, 3] > 0
+        pressure_mask = (
+            pressure_mask | np.roll(pressure_mask, 1) | np.roll(pressure_mask, -1)
+        )
+        pressure_mask[0:2] = True  # To ensure we always have at least one line segment
+        pos = self.line_data_pos[pressure_mask, :]
+        col = self.line_data_col[pressure_mask, :]
         self.trail_line.set_data(
             pos if USE_3D_LINE else pos[:, 0:2],
-            color=get_line_color_from_pressure(pressure, self.line_color),
+            color=col,
         )
 
     def clear_line(self):
-        self.line_data_pressure *= 0
+        self.line_data_col[:, 3] *= 0
 
     def set_line_color(self, col: QtGui.QColor):
-        self.line_color = col.getRgbF() # (col.redF, col.greenF, col.blueF)
-        print(col,  col.getRgbF())
+        self.line_color = col.getRgbF()  # (col.redF, col.greenF, col.blueF)
 
     def set_line_width(self, width: float):
         self.trail_line.set_data(width=width)
 
+    def clear_last_stroke(self):
+        diff = np.diff(
+            (self.line_data_col[:, 3] > 0).astype(np.int8)
+        )  # 1 when stroke starts, -1 when it ends
+        start_indices = np.where(diff == 1)[0]
+        if len(start_indices) > 0:
+            last_stroke_index = start_indices[-1]
+            print(TRAIL_POINTS - last_stroke_index)
+            self.line_data_col[last_stroke_index:, 3] *= 0
+
     def on_key_press(self, e: vispy.app.canvas.KeyEvent):
-        if e.key == "R":
-            if "Control" in e.modifiers:
-                recording_enabled.value = True
-                print("Recording enabled")
-            else:
-                recording_enabled.value = False
-                print("Recording disabled")
-        elif e.key == "C":
+        # if e.key == "R":
+        #     if "Control" in e.modifiers:
+        #         recording_enabled.value = True
+        #         print("Recording enabled")
+        #     else:
+        #         recording_enabled.value = False
+        #         print("Recording disabled")
+        if e.key == "C":
             self.clear_line()
+        elif e.key == "Z" and "Control" in e.modifiers:
+            self.clear_last_stroke()
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -190,18 +202,24 @@ class MainWindow(QtWidgets.QMainWindow):
 
         color_button = ColorButton("Line color")
         color_button.colorChanged.connect(canvas_wrapper.set_line_color)
+        color_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         clear_button = QtWidgets.QPushButton("Clear (C)")
         clear_button.clicked.connect(canvas_wrapper.clear_line)
+        clear_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        undo_button = QtWidgets.QPushButton("Undo (Ctrl+Z)")
+        undo_button.clicked.connect(canvas_wrapper.clear_last_stroke)
+        undo_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.line_width_label = QtWidgets.QLabel("")
         self.line_width_label.setMinimumWidth(80)
         self.line_width_slider = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
-        self.line_width_slider.setRange(1,20)
+        self.line_width_slider.setRange(1, 20)
         self.line_width_slider.valueChanged.connect(self.line_width_changed)
         self.line_width_slider.setValue(2)
         bottom_toolbar = QtWidgets.QHBoxLayout()
         bottom_toolbar.addWidget(clear_button)
+        bottom_toolbar.addWidget(undo_button)
         bottom_toolbar.addWidget(color_button)
-        bottom_toolbar.addWidget(QtWidgets.QLabel("Line width:"))
+        bottom_toolbar.addWidget(QtWidgets.QLabel("Thickness:"))
         bottom_toolbar.addWidget(self.line_width_slider)
         bottom_toolbar.addWidget(self.line_width_label)
         main_layout.addLayout(bottom_toolbar)
@@ -256,7 +274,9 @@ class QueueConsumer(QtCore.QObject):
                     self._tracker_queue.get()
                 reading = self._tracker_queue.get_nowait()
                 if recording_enabled.value:
-                    self._recorded_data_camera.append((time.time_ns() // 1_000_000, reading))
+                    self._recorded_data_camera.append(
+                        (time.time_ns() // 1_000_000, reading)
+                    )
                 samples_since_camera = 0
                 smoothed_tip_pos = self._filter.update_camera(
                     reading.position.flatten(), reading.orientation_mat
@@ -271,7 +291,9 @@ class QueueConsumer(QtCore.QObject):
                 if samples_since_camera > 10:
                     continue
                 if recording_enabled.value:
-                    self._recorded_data_stylus.append((time.time_ns() // 1_000_000, reading))
+                    self._recorded_data_stylus.append(
+                        (time.time_ns() // 1_000_000, reading)
+                    )
                 self._filter.update_imu(reading.accel, reading.gyro)
                 position, orientation = self._filter.get_tip_pose()
                 zpos = position[2]
@@ -298,10 +320,22 @@ class QueueConsumer(QtCore.QObject):
             file1 = Path(f"recordings/{recording_timestamp}/stylus_data.json")
             file1.parent.mkdir(parents=True, exist_ok=True)
             with file1.open("x") as f:
-                json.dump([ dict(t=t, data=reading.to_json()) for t, reading in self._recorded_data_stylus], f)
+                json.dump(
+                    [
+                        dict(t=t, data=reading.to_json())
+                        for t, reading in self._recorded_data_stylus
+                    ],
+                    f,
+                )
             file2 = Path(f"recordings/{recording_timestamp}/camera_data_original.json")
             with file2.open("x") as f:
-                json.dump([ dict(t=t, data=reading.to_json()) for t, reading in self._recorded_data_camera], f)
+                json.dump(
+                    [
+                        dict(t=t, data=reading.to_json())
+                        for t, reading in self._recorded_data_camera
+                    ],
+                    f,
+                )
 
         self.finished.emit()
 

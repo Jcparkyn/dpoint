@@ -150,7 +150,13 @@ def vector_rms(arr: np.ndarray, axis: int):
 
 
 def solve_pnp(
-    initialized, prev_rvec, prev_tvec, object_points, image_points, camera_matrix, dist_coeffs
+    initialized,
+    prev_rvec,
+    prev_tvec,
+    object_points,
+    image_points,
+    camera_matrix,
+    dist_coeffs,
 ) -> Tuple[bool, np.ndarray, np.ndarray]:
     """Attempt to refine the previous pose. If this fails, fall back to SQPnP."""
     if initialized:
@@ -188,12 +194,15 @@ def solve_pnp(
 MarkerDict = dict[int, tuple[np.ndarray, np.ndarray]]
 
 
-def detect_markers_bounded(
-    frame: np.ndarray, x0: int, x1: int, y0: int, y1: int
-):
+def detect_markers_bounded(frame: np.ndarray, x0: int, x1: int, y0: int, y1: int):
     x0, y0 = max(x0, 0), max(y0, 0)
     frame_view = frame[y0:y1, x0:x1]
-    allCornersIS, ids, rejected = detector.detectMarkers(frame_view)
+    try:
+        allCornersIS, ids, rejected = detector.detectMarkers(frame_view)
+    except cv2.error:
+        # OpenCV threw an error here once for some reason, but we'd rather ignore it.
+        # D:\a\opencv-python\opencv-python\opencv\modules\objdetect\src\aruco\aruco_detector.cpp:698: error: (-215:Assertion failed) nContours.size() >= 2 in function 'cv::aruco::_interpolate2Dline'
+        pass
     if ids is not None:
         for i in range(ids.shape[0]):
             allCornersIS[i][0, :, 0] += x0
@@ -258,9 +267,7 @@ class MarkerTracker:
                 self.rvec, self.tvec, self.lastVelocity
             )
             cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 100, 0, 0.3), 2)
-            allCornersIS, ids, rejected = detect_markers_bounded(
-                frame, x0, x1, y0, y1
-            )
+            allCornersIS, ids, rejected = detect_markers_bounded(frame, x0, x1, y0, y1)
         else:
             allCornersIS, ids, rejected = detector.detectMarkers(frame)
         aruco.drawDetectedMarkers(frame, allCornersIS, ids)
@@ -365,7 +372,9 @@ def run_tracker(
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
     cv2.moveWindow("Tracker", -1080, -120)
     cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
-    camera_matrix, dist_coeffs = read_camera_parameters("params/camera_params_c922_f30.yml")
+    camera_matrix, dist_coeffs = read_camera_parameters(
+        "params/camera_params_c922_f30.yml"
+    )
     marker_positions = load_marker_positions()
     print("Opening webcam..")
     webcam = get_webcam()
@@ -429,10 +438,14 @@ def run_tracker(
             rvec_tip, tvec_tip, *_ = cv2.composeRT(
                 np.zeros(3), tip_to_imu_offset, rvec, tvec
             )
-            _, tvec_tip_relative = relative_transform(rvec_tip, tvec_tip, baseRvec, baseTvec)
+            _, tvec_tip_relative = relative_transform(
+                rvec_tip, tvec_tip, baseRvec, baseTvec
+            )
             R_relative = cv2.Rodrigues(rvec_relative)[0]  # TODO: use Rodrigues directly
             cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec, tvec, 0.01)
-            cv2.drawFrameAxes(frame, camera_matrix, dist_coeffs, rvec_tip, tvec_tip, 0.01)
+            cv2.drawFrameAxes(
+                frame, camera_matrix, dist_coeffs, rvec_tip, tvec_tip, 0.01
+            )
             cv2.putText(
                 frame,
                 f"IMU: [{array_to_str(tvec_relative*100)}]cm",
