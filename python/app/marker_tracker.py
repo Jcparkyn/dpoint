@@ -102,8 +102,11 @@ def array_to_str(arr):
     return ",".join(map(lambda x: f"{x:+2.2f}", list(arr.flat)))
 
 
-charuco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
-charuco_board = aruco.CharucoBoard((10, 7), 0.028, 0.022, charuco_dic)
+# charuco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
+# charuco_board = aruco.CharucoBoard((10, 7), 0.028, 0.022, charuco_dic)
+charuco_dic = aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
+charuco_board = aruco.CharucoBoard((12, 8), 0.024, 0.018, charuco_dic)
+charuco_board.setLegacyPattern(True)
 charuco_params = aruco.DetectorParameters()
 charuco_detector = aruco.ArucoDetector(charuco_dic, charuco_params)
 
@@ -197,11 +200,15 @@ MarkerDict = dict[int, tuple[np.ndarray, np.ndarray]]
 def detect_markers_bounded(frame: np.ndarray, x0: int, x1: int, y0: int, y1: int):
     x0, y0 = max(x0, 0), max(y0, 0)
     frame_view = frame[y0:y1, x0:x1]
+    ids = None
+    allCornersIS = []
+    rejected = []
     try:
         allCornersIS, ids, rejected = detector.detectMarkers(frame_view)
-    except cv2.error:
+    except cv2.error as e:
         # OpenCV threw an error here once for some reason, but we'd rather ignore it.
         # D:\a\opencv-python\opencv-python\opencv\modules\objdetect\src\aruco\aruco_detector.cpp:698: error: (-215:Assertion failed) nContours.size() >= 2 in function 'cv::aruco::_interpolate2Dline'
+        print(e)
         pass
     if ids is not None:
         for i in range(ids.shape[0]):
@@ -508,7 +515,7 @@ def run_tracker(
                 pickle.dump((baseRvec, baseTvec), pickle_file)
 
         # Adjust focus periodically
-        if auto_focus and frame_count % focus_interval == 0:
+        if auto_focus and calibrated and frame_count % focus_interval == 0:
             if result is None:
                 focus = 30
             else:
