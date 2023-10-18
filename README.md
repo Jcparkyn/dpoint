@@ -1,14 +1,15 @@
-# D-POINT
+# D-POINT: Digital Pen with Optical-Inertial Tracking
 
-**Digital Pen with Optical-Inertial Tracking**
+**D-POINT** is an open-source digital stylus that uses camera tracking and inertial measurements to achieve 6DoF (six degrees of freedom) inputs, with low latency, pressure sensitivity, and sub-millimetre accuracy.
+The stylus can be used on any flat surface, and works with consumer-grade webcams.
 
-D-POINT is an open-source digital stylus that uses camera tracking and inertial measurements to achieve 6DoF (six degrees of freedom) inputs, with low latency, pressure sensitivity, and sub-millimetre accuracy.
+<video src="https://github.com/Jcparkyn/dpoint/assets/51850908/21d00ce3-6456-4fba-8c24-4bc8e6642a0d" width="1920" height="1080" autoplay loop muted></video>
 
 This project was part of my undergraduate thesis for electrical engineering. I've open-sourced the code and design files in the hopes that they might be useful to somebody, but it's not intended to be a "plug and play" DIY project.
 
 ## Design
 
-This is a very brief overview of how the system works. For all the details, plus literature review and lots of evaluation, read the full thesis (I haven't published it online yet).
+This is a very brief overview of how the system works. For all the details, plus literature review and lots of evaluation, read the full thesis (note: I haven't published this online yet).
 
 ![Block diagram showing how the system works](assets/block-diagram.png)
 
