@@ -18,4 +18,5 @@ recordings/*/*.pkl
 !recordings/*/camera_extrinsics.pkl
 
 analysis/tip_measurements/**/*.pdf
+analysis/*.png
 analysis/latency-histogram.pdf
