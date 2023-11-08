@@ -377,7 +377,6 @@ def run_tracker(
     recording_timestamp: str = "",
 ):
     cv2.namedWindow("Tracker", cv2.WINDOW_KEEPRATIO)
-    cv2.moveWindow("Tracker", -1080, -120)
     cv2.resizeWindow("Tracker", 1050, int(1050 * 1080 / 1920))
     camera_matrix, dist_coeffs = read_camera_parameters(
         "params/camera_params_c922_f30.yml"
