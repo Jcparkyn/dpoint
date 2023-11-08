@@ -78,7 +78,7 @@ ViewUpdateData = CameraUpdateData | StylusUpdateData
 
 class CanvasWrapper:
     def __init__(self):
-        self.canvas = SceneCanvas(size=CANVAS_SIZE)
+        self.canvas = SceneCanvas(size=CANVAS_SIZE, vsync=False)
         self.canvas.measure_fps()
         self.canvas.connect(self.on_key_press)
         self.grid = self.canvas.central_widget.add_grid()
@@ -119,6 +119,8 @@ class CanvasWrapper:
             )
 
         axis = scene.visuals.XYZAxis(parent=self.view_top.scene)
+        axis.transform = transforms.MatrixTransform()
+        axis.transform.scale([0.02, 0.02, 0.02])
         # This is broken for now, see https://github.com/vispy/vispy/issues/2363
         # grid = scene.visuals.GridLines(parent=self.view_top.scene)
 
@@ -157,6 +159,7 @@ class CanvasWrapper:
 
     def clear_line(self):
         self.line_data_col[:, 3] *= 0
+        self.refresh_line()
 
     def set_line_color(self, col: QtGui.QColor):
         self.line_color = col.getRgbF()  # (col.redF, col.greenF, col.blueF)
@@ -173,6 +176,7 @@ class CanvasWrapper:
             last_stroke_index = start_indices[-1]
             print(TRAIL_POINTS - last_stroke_index)
             self.line_data_col[last_stroke_index:, 3] *= 0
+        self.refresh_line()
 
     def on_key_press(self, e: vispy.app.canvas.KeyEvent):
         # if e.key == "R":
