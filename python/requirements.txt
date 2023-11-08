@@ -61,7 +61,7 @@ PyYAML==6.0.1
 pyzmq==25.1.0
 requests==2.31.0
 scipy==1.11.1
-seaborn==0.12.2
+seaborn==0.13.0
 six==1.16.0
 soupsieve==2.4.1
 stack-data==0.6.2
