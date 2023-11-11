@@ -58,9 +58,13 @@ To upload the code to the development board:
 1. Finally, you'll also need a ChArUco board for camera calibration, which you can print using the pattern from [markers/](./markers/). You can either attach this to a flat board, or leave it on your desk.
 
 
-[TODO: Wiring diagram]
+Wiring diagram:
 
-[TODO: Marker diagram]
+<img src="https://github.com/Jcparkyn/dpoint/assets/51850908/f026f9f5-f5c4-458f-8883-b0071133f5e3" width="400px" />
+
+Marker placement:
+
+<img src="https://github.com/Jcparkyn/dpoint/assets/51850908/ae7184bb-005e-4dba-aeb7-f23acaa67785" width="400px" />
 
 ## Software setup
 
