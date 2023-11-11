@@ -8,15 +8,15 @@ import glob
 
 
 # ChAruco board variables
-CHARUCOBOARD_ROWCOUNT = 7
-CHARUCOBOARD_COLCOUNT = 10
-ARUCO_DICT = aruco.getPredefinedDictionary(aruco.DICT_5X5_250)
+CHARUCOBOARD_ROWCOUNT = 8
+CHARUCOBOARD_COLCOUNT = 12
+ARUCO_DICT = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
 
 # Create constants to be passed into OpenCV and Aruco methods
 CHARUCO_BOARD = aruco.CharucoBoard(
         (CHARUCOBOARD_COLCOUNT, CHARUCOBOARD_ROWCOUNT),
-        0.028,
-        0.022,
+        0.024,
+        0.018,
         ARUCO_DICT)
 
 # Create the arrays and variables we'll use to store info like corners and IDs from images processed
