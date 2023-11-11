@@ -5,7 +5,7 @@ The stylus can be used on any flat surface, and works with consumer-grade webcam
 
 <video src="https://github.com/Jcparkyn/dpoint/assets/51850908/21d00ce3-6456-4fba-8c24-4bc8e6642a0d" width="1920" height="1080" autoplay loop muted></video>
 
-This project was part of my undergraduate thesis for electrical engineering. I've open-sourced the code and design files in the hopes that they might be useful to somebody, but it's not intended to be a "plug and play" DIY project.
+This project was part of my undergraduate thesis for electrical engineering. I've open-sourced the code and design files in the hopes that they might be useful to somebody, but it's not intended to be a "plug and play" DIY project. If you want to try building it anyway, follow the [setup guide](./setup-guide.md).
 
 ## Design
 
@@ -31,4 +31,4 @@ The VPE process involves the four main steps:
 
 We use an Extended Kalman Filter (EKF) to fuse the VPE estimates with the inertial data from the accelerometer and gyroscope, and refine the estimates in real-time using the Rauch-Tung-Striebel (RTS) algorithm. To account for time delay from the camera frames, we use a negative-time measurement update algorithm. The EKF is implemented using NumPy and [Numba](https://numba.pydata.org/).
 
-The use of inertial measurements dramatically reduces latency compared to a camera-only implementation, while also improving accuracy and report rate for fast movements.
+Using inertial measurements allows us to dramatically reduce latency compared to a camera-only implementation, while also improving accuracy and report rate for fast movements.
