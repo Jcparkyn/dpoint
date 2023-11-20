@@ -68,16 +68,17 @@ Marker placement:
 
 ## Software setup
 
-The python code requires Python 3.11, and should work on any platform.
+The python code requires Python 3.11. I've tried to make sure the codebase works cross-platform, but it's currently only been tested on Windows 10.
+You'll also need a relatively powerful CPU to run the application with its current settings. I used an i5-13600KF, but you should be able to get away with something a couple of generations older. If you have performance problems, try changing the settings in [configuration and tuning](#configuration-and-tuning).
 
 1. Open the [python/](./python/) directory (`cd python`).
-2. Create and activate a Python [virtual environment](https://docs.python.org/3/tutorial/venv.html#creating-virtual-environments) (optional, but recommended).
-3. Install dependencies:
+1. Create and activate a Python [virtual environment](https://docs.python.org/3/tutorial/venv.html#creating-virtual-environments) (optional, but recommended).
+1. Install dependencies:
 ```bash
 python -m pip install -r requirements.txt
 ```
-4. Run the camera calibration script (see steps [below](#camera-calibration)). If you're using a Logitech C922 webcam like mine, you may be able to skip this step at the cost of some accuracy.
-5. Optional, for better accuracy: Run the [marker calibration script](./python/calibrate_markers.py). Take at least 15 photos of the stylus from different angles (using your calibrated webcam), put them in the `IMAGE_PATH` directory for the script, then run the script.
+1. Run the camera calibration script (see steps [below](#camera-calibration)). If you're using a Logitech C922 webcam like mine, you may be able to skip this step at the cost of some accuracy.
+1. Optional, for better accuracy: Run the [marker calibration script](./python/calibrate_markers.py). Take at least 15 photos of the stylus from different angles (using your calibrated webcam), put them in the `IMAGE_PATH` directory for the script, then run the script.
 
 ## Running the application
 
@@ -86,16 +87,29 @@ Run [main.py](./python/main.py). If you have the `python` directory open in VSCo
 python -m main
 ```
 
-Auto-exposure is disabled, so you might need to adjust the exposure level in `marker_tracker.py`. Make it as low as you can without the markers failing to detect. Adding a light source will help.
-
 Put the ChArUco board on your desk in view of the webcam, then press <kbd>C</kbd> (with the camera window focused) to calibrate the camera position.
 
-Make sure the stylus is on
+Make sure the stylus is on - there should be a blue light (if not connected) or green light (if connected) near the USB port. If the stylus is asleep, shake it twice vertically to wake it up.
 
-### Camera calibration
+## Camera calibration
 To calibrate your camera:
 1. Take 5-10 photos of the ChArUco board from different angles using your webcam.
 2. Put the images into `calibration_pics/f30/`.
 3. Run `calibrate_camera.py`.
 
 This calibrates the camera intrinsic parameters, but not the camera position or rotation. These are calibrated at run-time.
+
+## Configuration and tuning
+Most of the codebase is set up for my own hardware and requirements, so it might not work perfectly for other setups. Here are a list of things to check:
+
+- **Camera exposure:** Auto-exposure is disabled, so you might need to adjust the exposure level in `marker_tracker.py`. Make it as low as you can without the markers failing to detect. Adding a light source will help.
+- **Camera time delay:** The code tries to account for the time delay between the camera and IMU readings, which may be different on different systems. Adjust the value of `camera_delay` in `app.py` until you find the value that gives the best accuracy.
+- **Camera focus:** The code tries to maintain focus on the stylus markers, but this relies on pre-measured focus values for my camera. If the focus looks wrong for your camera, try adjusting the values in `focus_targets` (`marker_tracker.py`).
+- **RTS smoothing:** The filter uses RTS smoothing, which slightly improves accuracy but can be computationally intensive. If you have performance issues, set `smoothing_length=0` in `app.py` to a smaller value (or zero).
+- **Marker search area:** The marker tracker tries to reduce the area of the frame where it looks for markers (this is the green box on the camera preview). If you have performance issues, adjust the value of `expand` in `marker_tracker.py` to reduce the search area for markers in each frame.
+- **Camera frame rate:** This isn't directly exposed in the code, and depends on the camera you're using (OpenCV can't reliably set it), but you may want to try running your webcam at 15FPS (or another frame rate) instead of 30FPS. This should give relatively similar accuracy down to about 10-15FPS, and reduce computational requirements, but it might affect the `camera_delay`.
+- **IMU update rate:** You can try adjusting the IMU update rate by changing `delayMs` in the [Arduino code](./microcontroller/dpoint-arduino/dpoint-arduino.ino). Make sure to update the corresponing `dt` in `app.py`, and test that the rate you chose is actually being achieved (this is limited by BLE settings and some other things). Ideally, `dt` should be computed automatically from timestamps in the BLE packets, but I removed this at one point and didn't get around to re-implementing it.
+- **VSync:** For minimum latency, make sure to disable VSync in your graphics card settings.
+- **Camera resolution:** If you try running this at a resolution other than 1920x1080, you'll probably have to tweak some other settings (and re-calibrate your camera).
+- **Stylus length:** Depending on the nib you use, the length of your stylus might be slightly different than mine. Adjust `STYLUS_LENGTH` in `dimensions.py` to correct this.
+- **Pressure sensor:** With the current wiring, the force sensor gets lots of interference when the USB cable is connected. Make sure to run it wirelessly for full accuracy. The code also tries to account for drift by re-calibrating the sensor whenever it's away from the page, but if you want to draw on 3D objects you'll need to disable this.
