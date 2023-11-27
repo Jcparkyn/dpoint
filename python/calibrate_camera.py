@@ -18,6 +18,7 @@ CHARUCO_BOARD = aruco.CharucoBoard(
         0.024,
         0.018,
         ARUCO_DICT)
+CHARUCO_BOARD.setLegacyPattern(True)
 
 # Create the arrays and variables we'll use to store info like corners and IDs from images processed
 corners_all = [] # Corners discovered in all images processed
