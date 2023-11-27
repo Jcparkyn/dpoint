@@ -372,7 +372,7 @@ def get_focus_target(dist_to_camera):
 
 
 def run_tracker(
-    on_estimate: Optional[Callable[[np.ndarray, np.ndarray], None]],
+    on_estimate: Optional[Callable[[CameraReading], None]],
     recording_enabled: Optional[mp.Value] = None,
     recording_timestamp: str = "",
 ):
